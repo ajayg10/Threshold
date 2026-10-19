@@ -25,24 +25,44 @@ def resolve_device_name(event: DoorEvent) -> str | None:
     return device.name if device else None
 
 
-def process_event(event_id: str) -> EventRecord | None:
+def save(record: EventRecord) -> EventRecord:
+    """Read-merge-write: the pipeline owns card/pipeline/status, but replies and resident escalations may
+    have been added through the API while it ran, so those are kept and agent escalations are merged in."""
     store = get_store()
-    record = store.get_event(event_id)
+    fresh = store.get_event(record.event.id) or record
+    known = {e.message_id for e in fresh.escalations}
+    merged = fresh.model_copy(update={
+        "device_name": record.device_name,
+        "status": record.status,
+        "card": record.card,
+        "pipeline": record.pipeline,
+        "error": record.error,
+        "escalations": fresh.escalations + [e for e in record.escalations if e.message_id not in known],
+        "updated_at": utcnow(),
+    })
+    store.put_event(merged)
+    return merged
+
+
+def process_event(event_id: str) -> EventRecord | None:
+    record = get_store().get_event(event_id)
     if record is None:
         log.warning("event %s not found", event_id)
         return None
 
     record.device_name = resolve_device_name(record.event)
+
+    def publish_preliminary(card, info) -> None:
+        save(record.model_copy(update={"status": "ready", "card": card, "pipeline": info}))
+
     try:
-        record.card, record.pipeline = orchestrator.run(record)
+        record.card, record.pipeline = orchestrator.run(record, on_preliminary=publish_preliminary)
         record.status = "ready"
     except Exception as err:
         log.exception("pipeline failed for %s", event_id)
         record.status, record.error = "error", f"Pipeline failed ({type(err).__name__})"
 
-    record.updated_at = utcnow()
-    store.put_event(record)
-    return record
+    return save(record)
 
 
 def handler(event: dict, context) -> dict:

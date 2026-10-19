@@ -17,6 +17,9 @@ from . import phrases
 
 LEVELS: list[Level] = ["low", "medium", "high"]
 ESCALATE_FLAGS: set[RiskFlag] = {"pretext_entry_request", "asks_for_codes_or_otp", "payment_request"}
+# Flags the policy agent may add: ones it can judge from context (bookings, time). What the visitor
+# actually said (entry, codes, payment, injection) is perception's call; the agent never heard them.
+AGENT_FLAGS: set[RiskFlag] = {"unverified_authority_claim", "tailgating_attempt"}
 SAFE_FALLBACK_INTENTS = ["ask_id", "call_family", "ask_to_wait", "decline"]
 
 
@@ -24,7 +27,10 @@ class PolicyDecision(BaseModel):
     """What the policy agent may contribute. Applied with max/union semantics only."""
 
     risk_level: Level = Field(description="Your risk assessment. Lower values than the card's are ignored.")
-    add_flags: list[RiskFlag] = Field(default_factory=list, description="Extra risk flags to add (never removes)")
+    add_flags: list[RiskFlag] = Field(
+        default_factory=list,
+        description="Only unverified_authority_claim or tailgating_attempt, when context shows it. Others are ignored.",
+    )
     escalate: bool = Field(description="True if a trusted contact should be alerted")
     reason: str = Field(default="", description="Under 20 words, in the resident's language")
 
@@ -92,7 +98,10 @@ def apply(
         if LEVELS.index(decision.risk_level) > LEVELS.index(risk):
             notes.append(f"Policy agent raised risk {risk} -> {decision.risk_level}")
         risk = max_level(risk, decision.risk_level)
-        flags += [f for f in decision.add_flags if f not in flags]
+        ignored = sorted(set(decision.add_flags) - AGENT_FLAGS - set(flags))
+        if ignored:
+            notes.append(f"Ignored agent flags it cannot judge from context: {ignored}")
+        flags += [f for f in decision.add_flags if f in AGENT_FLAGS and f not in flags]
         if decision.escalate and not escalation.required:
             escalation = Escalation(required=True, reason=decision.reason or escalation.reason)
             notes.append("Policy agent required escalation")

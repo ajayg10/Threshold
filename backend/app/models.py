@@ -117,7 +117,33 @@ class PipelineInfo(Strict):
     transcript_source: Literal["transcribe_streaming", "transcribe_batch", "precomputed", "none"] = "none"
     perception_model: str | None = None
     perception_fallback: bool = False
+    # "pending": the guardrailed card is published while the policy agent is still reviewing it.
+    policy: Literal["pending", "agent", "fast_path", "agent_failed"] = "fast_path"
+    policy_model: str | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class ReplyRecord(Strict):
+    """A reply the resident sent. Text is kept; audio lives in S3 for at most a day."""
+
+    id: str
+    source: Literal["suggested", "custom"]
+    suggestion_id: str | None = None
+    resident_text: str
+    visitor_text: str
+    visitor_language: str
+    audio_key: str | None = None  # S3 key; presigned on read
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class EscalationRecord(Strict):
+    at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    by: Literal["agent", "resident"]
+    contact_id: str
+    contact_name: str
+    channel: Literal["sns", "simulated"]
+    message_id: str
+    reason: str
 
 
 class EventRecord(Strict):
@@ -126,6 +152,8 @@ class EventRecord(Strict):
     status: EventStatus = "processing"
     card: VisitorCard | None = None
     pipeline: PipelineInfo | None = None
+    replies: list[ReplyRecord] = Field(default_factory=list)
+    escalations: list[EscalationRecord] = Field(default_factory=list)
     error: str | None = None
     created_at: AwareDatetime = Field(default_factory=utcnow)
     updated_at: AwareDatetime = Field(default_factory=utcnow)

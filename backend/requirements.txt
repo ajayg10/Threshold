@@ -9,3 +9,5 @@ boto3==1.43.114
 amazon-transcribe==0.6.4
 # IANA time zones for zoneinfo (resident local time), independent of the OS
 tzdata==2026.5
+# Policy agent
+strands-agents==1.61.1

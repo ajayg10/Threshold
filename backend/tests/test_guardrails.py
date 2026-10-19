@@ -100,9 +100,18 @@ def test_agent_can_raise_but_never_lower():
     assert kept.risk_flags == ["pretext_entry_request"]  # agent cannot remove flags
 
 
-def test_agent_flags_are_added():
-    out, _ = apply(card(), PolicyDecision(risk_level="medium", escalate=False, add_flags=["urgency_pressure"]), "en-IN")
-    assert out.risk_flags == ["urgency_pressure"] and out.risk_level == "medium"
+def test_agent_can_add_only_context_flags():
+    out, _ = apply(card(), PolicyDecision(risk_level="medium", escalate=False, add_flags=["unverified_authority_claim"]), "en-IN")
+    assert out.risk_flags == ["unverified_authority_claim"] and out.risk_level == "medium"
+
+
+def test_agent_cannot_add_content_flags_that_force_escalation():
+    # Seen on the deployed stack: the agent added pretext_entry_request to an AC visit arriving after
+    # its booked slot. The visitor never asked to come in, so the guardrail must not escalate on it.
+    decision = PolicyDecision(risk_level="medium", escalate=False, add_flags=["pretext_entry_request", "payment_request"])
+    out, notes = apply(card(visitor_type="service"), decision, "en-IN")
+    assert out.risk_flags == [] and out.risk_level == "medium" and not out.escalation.required
+    assert any("Ignored agent flags" in n for n in notes)
 
 
 # ---------------------------------------------------------------- replies

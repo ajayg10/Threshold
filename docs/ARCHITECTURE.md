@@ -70,6 +70,14 @@ flowchart LR
   3. The guardrailed card is **published first** (`pipeline.policy = "pending"`). The agent then reviews it, and its decision is merged with raise-only semantics before the guardrails run again.
   4. So the resident sees a safe card about 3–4 s after speech, and the agent's verdict arrives about 6–7 s later. A guardrailed card is never less safe than the final one.
   5. Model choice was measured on s2/s4/s5/s7: Haiku 4.5 (5.7–7.7 s, the best judgement); Nova Pro (3.2–5.3 s, a spurious flag on the salesperson); Nova Lite (a **false alarm**: escalated the salesperson). We use Haiku 4.5.
+  6. The agent may only add *context* flags (`unverified_authority_claim`, `tailgating_attempt`). On the deployed stack it once added `pretext_entry_request` to the AC visit because it arrived after the booked slot, and the guardrail turned that into a false escalation. Content flags are perception's call, since only perception heard the visitor; this is enforced in `guardrails.apply` and tested.
+  7. Deployed results (2026-10-19, client in India):
+     - All 8 cards were valid and matched expectations.
+     - s2 and s7 were escalated, with the agent's SNS alert to Rahul.
+     - s4 was raised to medium by the agent (arrived outside the 4–5 pm window) and not escalated.
+     - s5 stayed low.
+     - The first card was visible after 5.8–13.2 s and the final verdict after 5.8–18.6 s, both measured from the trigger and including the clip.
+  8. **Demo note:** s4's risk depends on local time. Inside the 4–5 pm IST window it should be low; outside it, the agent raises it to medium.
 - **Reply → Door Display (Phase 4):**
   1. `POST /api/events/{id}/reply` takes a suggestion id or custom text.
   2. Custom text is translated with Nova Lite (skipped when the languages match), and Polly speaks the visitor-language text.

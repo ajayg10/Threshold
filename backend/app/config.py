@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     bedrock_translate_model_id: str = "us.amazon.nova-lite-v1:0"
     bedrock_fallback_model_id: str = "us.amazon.nova-pro-v1:0"
+    # Strands policy agent. Must be one of the three model IDs above (IAM is scoped to them).
+    bedrock_policy_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    policy_timeout_seconds: float = 12.0  # the card is already visible while the agent runs
+
+    # Escalations: SNS topic in AWS; empty -> the simulated notifier (logged and recorded, nothing sent).
+    escalation_topic_arn: str = ""
+
+    # Polly neural voices by language (verified in docs/PHASE0_AWS_CHECKS.md). Base-language fallback applies.
+    polly_voices: dict[str, str] = {"hi-IN": "Kajal", "en-IN": "Kajal", "en-US": "Joanna", "en-GB": "Amy"}
+    reply_audio_url_seconds: int = 900
 
     precomputed_transcripts: bool = False
     # Transient audio (Ring clips, batch fallback, Polly replies). Lifecycle-expired after 1 day.

@@ -1,4 +1,4 @@
-"""Pipeline orchestrator: audio -> transcribe -> perceive -> policy, with per-stage timings.
+"""Pipeline orchestrator: audio -> transcribe -> perceive -> policy (agent + guardrails), with per-stage timings.
 
 Audio sources:
 - seeded scenario clips (test harness events carrying seed:<scenario>), transcribed by streaming
@@ -9,13 +9,15 @@ import logging
 import time
 import uuid
 import wave
+from collections.abc import Callable
 from datetime import timedelta
 
 from ..config import get_settings
-from ..models import EventRecord, PipelineInfo, SuggestedReply, Timings, VisitorCard
+from ..models import EventRecord, PipelineInfo, Timings, VisitorCard
 from ..ring.real import RealRingClient
 from ..seeds import audio_path, scenario_from_audio_url
 from ..store import get_store
+from . import guardrails, policy_agent
 from .perceive import no_speech_card, perceive
 from .transcribe import TranscriptResult, _clients, transcribe_batch, transcribe_seed
 
@@ -59,7 +61,9 @@ def transcribe_ring_clip(record: EventRecord, info: PipelineInfo) -> TranscriptR
     return result
 
 
-def run(record: EventRecord) -> tuple[VisitorCard, PipelineInfo]:
+def run(
+    record: EventRecord, on_preliminary: Callable[[VisitorCard, PipelineInfo], None] | None = None
+) -> tuple[VisitorCard, PipelineInfo]:
     settings = get_settings()
     resident = get_store().get_settings()
     info = PipelineInfo()
@@ -88,23 +92,41 @@ def run(record: EventRecord) -> tuple[VisitorCard, PipelineInfo]:
     else:
         output, perceive_ms = no_speech_card(resident.resident_language), 0
 
-    policy_ms = 0  # Phase 4: Strands policy agent + deterministic guardrails
-
-    replies = [
-        SuggestedReply(**{**r.model_dump(), "id": f"r{i}"}) for i, r in enumerate(output.suggested_replies, 1)
-    ]
     card = VisitorCard(
         event_id=record.event.id,
         detected_language=transcript.language or "und",
         transcript=transcript.transcript,
-        **output.model_dump(exclude={"suggested_replies"}),
-        suggested_replies=replies,
-        timings_ms=Timings(
+        **output.model_dump(),
+    )
+
+    def timings(policy_ms: int) -> Timings:
+        return Timings(
             audio=audio_ms,
             transcribe=transcript.elapsed_ms,
             perceive=perceive_ms,
             policy=policy_ms,
             total=round((time.perf_counter() - started) * 1000),
-        ),
-    )
+        )
+
+    # Policy, step 1: deterministic guardrails, always. The guardrailed card is safe to show.
+    policy_started = time.perf_counter()
+    perceived = card
+    card, guard_notes = guardrails.apply(perceived, None, resident.resident_language)
+    if not policy_agent.needs_agent(perceived):
+        info.notes += guard_notes
+        card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
+        return card, info
+
+    # Step 2: publish that card now, then let the Strands agent review it. The agent can only raise
+    # risk or escalate, so the early card is never less safe than the final one.
+    if on_preliminary is not None:
+        card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
+        on_preliminary(card, info.model_copy(update={"policy": "pending", "notes": info.notes + guard_notes}))
+
+    result = policy_agent.run(perceived, record, resident)
+    info.policy, info.policy_model = result.status, get_settings().bedrock_policy_model_id
+    info.notes += result.notes
+    card, guard_notes = guardrails.apply(perceived, result.decision, resident.resident_language)
+    info.notes += guard_notes
+    card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
     return card, info

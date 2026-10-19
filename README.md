@@ -6,17 +6,19 @@ Built for the Amazon Developer Hackathon ("Build, Ship, Shape"), Ring track, plu
 
 **Live demo:** https://d2mvbck7faef3t.cloudfront.net (API health: `/api/health`; Ring webhook: `/api/webhooks/ring`)
 
-> **Status: Phase 3 (pipeline).** In place:
-> - the HMAC-verified Ring webhook, real Ring API client, test harness, DynamoDB store and async worker Lambda;
-> - live Transcribe (en-IN/hi-IN language ID) and Bedrock perception (forced tool output, validated).
+> **Status: Phase 4 (policy and replies).** In place:
+> - the HMAC-verified Ring webhook, real Ring API client, test harness, DynamoDB store and async worker;
+> - live Transcribe and Bedrock perception;
+> - the Strands policy agent with deterministic guardrails;
+> - Nova Lite + Polly replies for the Door Display, and SNS escalation.
 >
-> All 8 seeded scenarios produce valid visitor cards. The policy agent and replies (Phase 4) and the screens (Phase 5) are next.
+> The screens (Phase 5) are next.
 
 ## Run the scenarios
 ```bash
 python scripts/run_scenarios.py
 ```
-This runs in-process against real AWS. Add `--url https://d2mvbck7faef3t.cloudfront.net` to run against the deployed stack. It prints each card's type, risk, language and per-stage timings, and checks each against the scenario's expectations.
+This runs in-process against real AWS. Add `--url https://d2mvbck7faef3t.cloudfront.net` to run against the deployed stack, and `--replies` to also send a suggested and a custom reply. It prints each card's type, risk, language and per-stage timings, and checks each against the scenario's expectations.
 
 ## Try the Ring path
 ```bash
