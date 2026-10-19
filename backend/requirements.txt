@@ -1,0 +1,11 @@
+# Runtime dependencies bundled into the Lambda package (scripts/tasks.py build, manylinux wheels).
+fastapi==0.148.0
+mangum==0.22.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+# Pinned rather than relying on the Lambda runtime's boto3 (Bedrock Converse tool use needs a recent botocore).
+boto3==1.43.114
+# Transcribe streaming (async SDK on awscrt)
+amazon-transcribe==0.6.4
+# IANA time zones for zoneinfo (resident local time), independent of the OS
+tzdata==2026.5

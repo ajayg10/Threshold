@@ -1,0 +1,5 @@
+-r requirements.txt
+uvicorn==0.54.0
+pytest==9.1.1
+httpx2==2.14.0
+moto[dynamodb]==5.2.4
