@@ -1,7 +1,7 @@
-# Windows equivalent of the Makefile. Usage: .\tasks.ps1 <install|local|test|build|deploy|outputs|destroy> [--yes]
+# Windows equivalent of the Makefile. Usage: .\tasks.ps1 <install|local|test|build|deploy|outputs|demo|destroy> [flags, e.g. --yes, --deployed, --rehearse]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('install', 'local', 'test', 'build', 'deploy', 'outputs', 'destroy')]
+    [ValidateSet('install', 'local', 'test', 'build', 'deploy', 'outputs', 'demo', 'destroy')]
     [string]$Task,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest

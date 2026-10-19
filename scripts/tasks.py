@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-platform task runner. `make <task>` and `.\\tasks.ps1 <task>` both call this file.
 
-Tasks: install, local, test, build, deploy, outputs, destroy
+Tasks: install, local, test, build, deploy, outputs, demo, destroy
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -227,6 +229,9 @@ def task_deploy(_: argparse.Namespace) -> None:
          "--exclude", "_next/static/*", "--cache-control", "no-cache"])
     run([aws, "s3", "sync", out_dir / "_next" / "static", f"{bucket}/_next/static", "--region", region,
          "--cache-control", "public,max-age=31536000,immutable"])
+    # S3 doesn't know the .webmanifest type; serve it as a proper manifest.
+    run([aws, "s3", "cp", out_dir / "manifest.webmanifest", f"{bucket}/manifest.webmanifest", "--region", region,
+         "--content-type", "application/manifest+json", "--cache-control", "no-cache"])
     run([aws, "cloudfront", "create-invalidation", "--distribution-id", dist, "--paths", "/*",
          "--query", "Invalidation.Id", "--output", "text"])
 
@@ -234,6 +239,85 @@ def task_deploy(_: argparse.Namespace) -> None:
     with urllib.request.urlopen(f"{url}/api/health", timeout=30) as resp:
         print(f"Smoke test: GET {url}/api/health -> {resp.status} {resp.read().decode()}")
     print(f"\nDeployed: {url}\nRing webhook URL: {out['RingWebhookUrl']}")
+
+
+# The order the scenarios appear in docs/DEMO_SCRIPT.md.
+DEMO_ORDER = ["s1_delivery_hi", "s2_meter_pretext", "s7_injection"]
+# Warm-up: Transcribe plus one perception call and no policy agent, so it barely touches the
+# account's 10-per-minute Haiku quota (friction log F18). A reply on it warms Nova Lite and Polly.
+WARMUP_SCENARIO = "s3_neighbour"
+
+
+def api_call(url: str, token: str, method: str, path: str, body: dict | None = None) -> dict:
+    req = urllib.request.Request(
+        f"{url}/api{path}", method=method, data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def task_demo(args: argparse.Namespace) -> None:
+    """Get a target ready to record: reset, warm up every stage, reset again, print the run order.
+
+    Local by default (the backend from the 'local' task); --deployed uses this stack, --url any site.
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import run_scenarios  # stdlib only on this path; imported here because it imports this module
+
+    env = load_env()
+    token = require(env, "DEMO_TOKEN")
+    if args.url:
+        api = site = args.url.rstrip("/")
+    elif args.deployed:
+        api = site = stack_outputs(env)["SiteUrl"].rstrip("/")
+    else:
+        api, site = "http://127.0.0.1:8000", "http://localhost:3000"
+    call = lambda method, path, body=None: api_call(api, token, method, path, body)  # noqa: E731
+
+    print(f"Target: {api}")
+    try:
+        call("GET", "/auth/check")
+    except urllib.error.HTTPError as err:
+        sys.exit(f"error: {api} rejected DEMO_TOKEN from .env (HTTP {err.code}). Deployed? Run the deploy task.")
+    except urllib.error.URLError as err:
+        hint = " Start it with the 'local' task first." if not (args.url or args.deployed) else ""
+        sys.exit(f"error: cannot reach {api} ({err.reason}).{hint}")
+
+    call("POST", "/demo/reset")
+    print("Reset: events cleared, seeded resident settings restored")
+
+    if not args.no_warmup:
+        print(f"Warm-up: {WARMUP_SCENARIO} (Transcribe, Bedrock, then a reply through Nova Lite and Polly)...", flush=True)
+        [rec] = run_scenarios.run_deployed(api, [WARMUP_SCENARIO], token)
+        card = rec.get("card") or {}
+        if rec["status"] != "ready":
+            sys.exit(f"error: warm-up visit ended as {rec['status']}: {rec.get('error')}")
+        reply = call("POST", f"/events/{urllib.parse.quote(rec['event']['id'])}/reply",
+                     {"text": "Thank you, I will be there in a minute."})
+        print(f"  card {card.get('visitor_type')}/{card.get('risk_level')} in {rec['observed_final_ms']} ms; "
+              f"reply audio {'ready' if reply.get('audio_url') else 'MISSING'}")
+        call("POST", "/demo/reset")
+
+    if args.rehearse:
+        print("Rehearsal, in script order (one at a time; agent visits use about 4 of 10 Haiku calls a minute):")
+        for sid in DEMO_ORDER:
+            [rec] = run_scenarios.run_deployed(api, [sid], token)
+            card = rec.get("card") or {}
+            print(f"  {sid:18} {rec['status']:6} {card.get('visitor_type', '-'):14} {card.get('risk_level', '-'):6} "
+                  f"first card {rec['observed_first_card_ms']} ms, final {rec['observed_final_ms']} ms, "
+                  f"escalated: {card.get('escalation', {}).get('required')}")
+            if (rec.get("pipeline") or {}).get("policy") in ("agent", "agent_failed") and sid != DEMO_ORDER[-1]:
+                time.sleep(20)
+        call("POST", "/demo/reset")
+        print("Reset again: the feed is empty for recording")
+
+    print(f"""
+Ready to record (script: docs/DEMO_SCRIPT.md). The access code on every screen is DEMO_TOKEN from .env.
+  Resident screen (phone or TV browser):  {site}/
+  Demo panel, to trigger visits:          {site}/demo
+  Door Display (tablet at the door):      {site}/door   then tap "Tap to turn on sound"
+Trigger, in order: {", ".join(DEMO_ORDER)}. Wait for each card before the next.""")
 
 
 def task_destroy(args: argparse.Namespace) -> None:
@@ -253,6 +337,7 @@ TASKS = {
     "build": task_build,
     "deploy": task_deploy,
     "outputs": task_outputs,
+    "demo": task_demo,
     "destroy": task_destroy,
 }
 
@@ -261,6 +346,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("task", choices=TASKS)
     parser.add_argument("--yes", action="store_true", help="confirm destructive tasks (destroy)")
+    demo = parser.add_argument_group("demo")
+    demo.add_argument("--deployed", action="store_true", help="target this stack's site instead of the local backend")
+    demo.add_argument("--url", help="target another deployed site, e.g. https://dxxxx.cloudfront.net")
+    demo.add_argument("--rehearse", action="store_true", help="also run the script's scenarios once, then reset")
+    demo.add_argument("--no-warmup", action="store_true", help="skip the warm-up visit")
     args = parser.parse_args()
     try:
         TASKS[args.task](args)

@@ -102,6 +102,15 @@ Resources:
       DefaultRouteSettings:
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
+      # Tighter caps on the two routes that spend money (Transcribe/Bedrock/Polly). The account's
+      # Lambda concurrency limit is 10, too low to reserve concurrency, so cost is capped here.
+      RouteSettings:
+        "POST /api/demo/trigger":
+          ThrottlingBurstLimit: 3
+          ThrottlingRateLimit: 0.5
+        "POST /api/events/{event_id}/reply":
+          ThrottlingBurstLimit: 3
+          ThrottlingRateLimit: 1
 
   ApiFunction:
     Type: AWS::Serverless::Function
@@ -148,6 +157,19 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /api/{proxy+}
             Method: ANY
+        # Explicit routes so they can carry their own throttles (RouteSettings above).
+        DemoTrigger:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/demo/trigger
+            Method: POST
+        Reply:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/events/{event_id}/reply
+            Method: POST
 
   ApiFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -376,7 +398,7 @@ Resources:
         Runtime: cloudfront-js-2.0
       FunctionCode: |
         // Keep in sync with web/app/**/page.tsx (enforced by backend/tests/test_infra.py).
-        var ROUTES = ['/'];
+        var ROUTES = ['/', '/demo', '/door', '/event', '/history', '/settings'];
         function handler(event) {
           var request = event.request;
           var uri = request.uri;
@@ -434,6 +456,7 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             Compress: true
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
             # Forwards all viewer headers (incl. Authorization and Ring's X-Signature) and query strings.
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
 

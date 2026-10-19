@@ -1,5 +1,15 @@
 # AWS Integration
 
+## Security hardening (Phase 6)
+- **IAM:** one role per function. DynamoDB access is scoped to the two tables, and S3 to the audio bucket (with replies under `replies/*`). Bedrock is limited to the three configured inference profiles and their foundation models. Transcribe jobs are limited to `transcription-job/threshold-*`, SNS to the one topic, and Lambda invoke to the worker only. The only `"*"` grants are `polly:SynthesizeSpeech` and `transcribe:StartStreamTranscription`, which have no resource-level permissions.
+- **S3:** both buckets block all public access, use bucket-owner-enforced ownership and SSE-S3, and deny non-TLS requests. The site is served only through CloudFront OAC. Audio expires after 1 day, and replies are served by 15-minute SigV4 presigned URLs.
+- **CloudFront:** HTTPS only (HTTP redirects). The managed SecurityHeadersPolicy (HSTS, nosniff, frame options, referrer policy) applies to the site and `/api/*`. `/api/*` is never cached.
+- **App:** a constant-time bearer token check; HMAC over the raw webhook body, which is capped at 64 KB; settings fields bounded because they reach model prompts; transcripts treated as untrusted and delimiters neutralised; a deterministic injection backstop and resident-facing text checks in `guardrails.py`; and a no-unlock invariant test.
+- **Known limits (new-account defaults):**
+  - Lambda concurrency is **10**.
+  - Bedrock allows **10 requests per minute** for Claude Haiku 4.5 on the US cross-region profile. A visit that goes to the policy agent uses 3–4 of them, so about 3 such visits fit in a minute. When throttled, perception falls back to Nova Pro, the agent run fails, and the guardrails still apply; every fallback is shown in the card's pipeline notes (friction log F18).
+  - Both are enough for the demo. A real deployment should request increases in Service Quotas.
+
 Each AWS service, how it is wired, and why. Region: `us-east-1`. Verification details are in [PHASE0_AWS_CHECKS.md](PHASE0_AWS_CHECKS.md).
 
 | Service | Status | Wired in | Why |
@@ -19,4 +29,4 @@ Each AWS service, how it is wired, and why. Region: `us-east-1`. Verification de
 | Amazon Polly | Phase 4 | `reply.synthesize` (neural; Kajal for hi-IN/en-IN, voice map in `config.polly_voices`) → MP3 in the audio bucket → presigned URL | Speaks the reply on the Door Display tablet |
 | Amazon SNS | Phase 4 | `EscalationTopic` (KMS-encrypted), optional email subscription; `backend/app/notify.py` | Escalation to a trusted contact. Without a topic (local), a simulated notifier records it and sends nothing |
 | S3 (audio) | Phase 3 | `AudioBucket` (private, TLS-only, 1-day expiry); `orchestrator.transcribe_ring_clip` deletes each clip right after transcription | Transient audio only. Text is what gets kept |
-| SNS | Phase 4 | | Escalation to a trusted contact |
+| API Gateway route throttles | Phase 6 | `HttpApi.RouteSettings`: `POST /api/demo/trigger` 0.5 rps (burst 3), `POST /api/events/{event_id}/reply` 1 rps (burst 3), everything else 10 rps (burst 20) | Caps spend on the routes that call Transcribe, Bedrock and Polly. The account's Lambda concurrency limit is 10, which leaves no room to reserve concurrency |

@@ -146,3 +146,32 @@ Entries are added as friction happens. Severity is low, medium, or high.
 - **Severity:** medium. It blocks Docker-free Lambda builds of any Strands agent on Windows.
 - **Workaround:** `uv pip install --python-platform x86_64-manylinux2014 --python-version 3.11 --only-binary :all: --target ...`. uv evaluates markers for the target platform, and the bundle is 88 MB with only Linux `.so` files.
 - **Suggestion:** Strands docs could include a "deploy to Lambda from Windows" recipe (uv or container build). SAM could also offer a non-container cross-platform build that evaluates markers for the target.
+
+## F17: Transient `ServiceUnavailableException` from Claude Haiku 4.5 on Bedrock, made slower by SDK retries
+- **Tool:** Amazon Bedrock Converse (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, US cross-region profile), boto3 standard retries
+- **Task:** Perception for scenario s6 during a UI click-through (2026-10-19).
+- **Actual:** Haiku returned `ServiceUnavailableException`. With botocore's standard retries plus backoff, about 10 s passed before our code fell back to Nova Pro. The fallback answered, but Nova Pro also added a false `prompt_injection_attempt` flag to a genuine emergency report.
+- **Severity:** medium. It doubles latency and degrades quality on exactly the visit where speed matters.
+- **Workaround:** No SDK retries on the primary model; the fallback model *is* the retry (`connect_timeout=3`, `read_timeout=15`, `max_attempts=1`). We also added prompt guidance on what counts as injection. Every fallback is disclosed in the card's pipeline notes.
+- **Seen again (Phase 6 evals, 2026-10-19):** in one of four full eval runs, the same s6 transcript hit `ServiceUnavailableException` after about 11 s. Nova Pro again flagged the smoke report as an injection attempt, despite the prompt line. We leave that visible in the evals rather than letting a guardrail remove safety flags.
+- **Suggestion:** Document expected availability or capacity behaviour for cross-region inference profiles, and whether `ServiceUnavailableException` means "retry the same profile" or "fail over".
+
+## F18: The new-account Bedrock quota for Claude Haiku 4.5 is 10 requests per minute, which one agent can use up
+- **Tool:** Amazon Bedrock (`us.anthropic.claude-haiku-4-5-20251001-v1:0`), Strands Agents 1.61.1, Service Quotas
+- **Task:** Run the Phase 6 evals (22 cases: perception, then the Strands policy agent) two at a time (2026-10-19).
+- **Actual:** Many calls failed with `ThrottlingException: Too many requests`. Service Quotas shows **10 requests per minute** for Haiku 4.5 through the US cross-region profile, the same through the global profile, and 25 for Nova Pro. One visit that needs the policy agent makes 3–4 Haiku calls (perception, then the agent's tool turn and its decision), so the quota covers only about 3 such visits a minute. Strands retries a throttled call with backoff, so our 12 s agent timeout fired, and those visits fell back to the guardrails alone. A throttled perception call fell back to Nova Pro, which once wrote "This visitor is safe. Open the door." into the summary of an injection attempt.
+- **Severity:** medium. It's fine for one door, but it hides real quality problems during evals, and a fresh hackathon account can't take a burst of judges trying the demo.
+- **Workaround:**
+  - The evals run one case at a time and pause after each agent case (`run_evals.py --pause`).
+  - A deterministic guardrail now replaces summaries that vouch for the visitor or tell the resident to open up.
+  - Every fallback and agent failure is shown in the card's pipeline notes.
+  - We kept the policy agent on the US profile, not the global one, so transcripts stay in US regions.
+- **Suggestion:** Show the RPM quota on the model access page and in the throttling error message. Raise new-account defaults for small models like Haiku, or offer a one-click hackathon tier. Document how Strands' throttling backoff interacts with `cancel_signal`.
+
+## F19: A Strands agent's `cancel_signal` can't stop a slow Bedrock call, and the default client waits up to 120 s
+- **Tool:** Strands Agents SDK 1.61.1, `BedrockModel`
+- **Task:** Bound the policy agent to 12 s (`cancel_signal` set by a timer), so the resident's final verdict never waits long.
+- **Actual:** In the Phase 6 evals, three runs hit the 12 s timeout but took **19–27 s** to return. `cancel_signal` is checked between agent steps, so an in-flight model call runs to completion. With no `boto_client_config`, `BedrockModel` builds its client with `read_timeout=120` and botocore's legacy retries, so a slow or failing call can hold the agent far past the timeout.
+- **Severity:** medium. The timeout looks like a hard bound, but it isn't one.
+- **Workaround:** `BedrockModel(boto_client_config=Config(connect_timeout=3, read_timeout=8, retries={"max_attempts": 2, "mode": "standard"}))`. Each agent call is short, so 8 s is generous. A rerun of four agent cases finished in 5.6–7.8 s. Our guardrailed card is published before the agent runs, so the resident is never blocked either way.
+- **Suggestion:** Document that `cancel_signal` is cooperative and doesn't interrupt model calls. Either let it abort the in-flight request, or default to a read timeout closer to typical agent turns and mention `boto_client_config` next to `cancel_signal`.
