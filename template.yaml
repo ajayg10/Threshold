@@ -1,0 +1,494 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Threshold - the front door's interpreter (Amazon Developer Hackathon, Ring track).
+  Next.js static export on private S3 behind CloudFront (OAC); FastAPI on Lambda behind an HTTP API,
+  routed through the same CloudFront domain at /api/*.
+
+Parameters:
+  DemoToken:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Shared bearer token for non-webhook API routes (demo auth, not production auth).
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Email for AWS Budget alerts. Leave empty to skip creating the budget.
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 25
+    MinValue: 1
+    Description: Monthly account-wide cost budget (USD) that triggers email alerts.
+  HarnessHmacKey:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Signs Threshold test-harness webhooks (our key, not Ring's).
+  # Ring Partner API. All optional: the deployed demo must work without them (judging until 2026-11-20).
+  RingHmacKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+  RingAccessToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+  RingRefreshToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+  RingClientId:
+    Type: String
+    NoEcho: true
+    Default: ""
+  RingClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+  # Bedrock US cross-region inference profiles (verified in docs/PHASE0_AWS_CHECKS.md). Must start with "us.".
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    AllowedPattern: ^us\..+
+  BedrockTranslateModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+    AllowedPattern: ^us\..+
+  BedrockFallbackModelId:
+    Type: String
+    Default: us.amazon.nova-pro-v1:0
+    AllowedPattern: ^us\..+
+  EscalationEmail:
+    Type: String
+    Default: ""
+    Description: Optional email subscribed to escalation alerts (AWS sends a confirmation email first).
+
+Conditions: # "none" is the deploy script's sentinel for unset (SAM rejects empty overrides)
+  HasAlertEmail: !And [!Not [!Equals [!Ref AlertEmail, ""]], !Not [!Equals [!Ref AlertEmail, "none"]]]
+  HasEscalationEmail: !And [!Not [!Equals [!Ref EscalationEmail, ""]], !Not [!Equals [!Ref EscalationEmail, "none"]]]
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures: [x86_64]
+    Timeout: 60
+    MemorySize: 1024
+    Environment:
+      Variables:
+        APP_ENV: aws
+        STORE_BACKEND: dynamodb
+        EVENTS_TABLE: !Ref EventsTable
+        SETTINGS_TABLE: !Ref SettingsTable
+        HARNESS_HMAC_KEY: !Ref HarnessHmacKey
+        RING_HMAC_KEY: !Ref RingHmacKey
+        RING_ACCESS_TOKEN: !Ref RingAccessToken
+        RING_REFRESH_TOKEN: !Ref RingRefreshToken
+        RING_CLIENT_ID: !Ref RingClientId
+        RING_CLIENT_SECRET: !Ref RingClientSecret
+        AUDIO_BUCKET: !Ref AudioBucket
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_TRANSLATE_MODEL_ID: !Ref BedrockTranslateModelId
+        BEDROCK_FALLBACK_MODEL_ID: !Ref BedrockFallbackModelId
+        BEDROCK_POLICY_MODEL_ID: !Ref BedrockModelId # policy agent shares the perception model (and its IAM grant)
+        ESCALATION_TOPIC_ARN: !Ref EscalationTopic
+        HOME: /tmp # Lambda's only writable path, for SDKs that write to $HOME
+
+Resources:
+  # ---------------------------------------------------------------- API -----------------------
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Threshold FastAPI app (Mangum)
+      CodeUri: .build/lambda # produced by `python scripts/tasks.py build`
+      Handler: app.main.handler
+      Environment:
+        Variables:
+          DEMO_TOKEN: !Ref DemoToken
+          DISPATCH_MODE: lambda
+          WORKER_FUNCTION_NAME: !Ref WorkerFunction
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref WorkerFunction
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt EscalationTopic.TopicName
+        - Statement:
+            # Replies: Nova Lite translation, Polly speech, MP3 in the audio bucket (presigned GET).
+            - Sid: ReplyTranslation
+              Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockTranslateModelId}
+                - !Sub
+                  - arn:aws:bedrock:*::foundation-model/${Base}
+                  - Base: !Select [1, !Split ["us.", !Ref BedrockTranslateModelId]]
+            - Sid: ReplySpeech
+              Effect: Allow
+              Action: [polly:SynthesizeSpeech]
+              Resource: "*" # Polly has no resource-level permissions for synthesis
+            - Sid: ReplyAudio
+              Effect: Allow
+              Action: [s3:PutObject, s3:GetObject]
+              Resource: !Sub ${AudioBucket.Arn}/replies/*
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: ANY
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+  # Pipeline worker: invoked asynchronously by the webhook path, which returns 200 well under Ring's 5 s.
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Threshold pipeline worker (async invoke)
+      CodeUri: .build/lambda
+      Handler: app.worker.handler
+      Timeout: 180 # room for Ring clip-download retries (up to 2 min) plus the policy agent
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0 # the worker records failures on the event itself
+        MaximumEventAgeInSeconds: 300
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
+        - SNSPublishMessagePolicy: # policy agent's notify_trusted_contact
+            TopicName: !GetAtt EscalationTopic.TopicName
+        - Statement:
+            # Transient audio and batch transcripts (Transcribe reads/writes S3 with the caller's permissions).
+            - Sid: AudioBucketObjects
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+              Resource: !Sub ${AudioBucket.Arn}/*
+            # Streaming transcription has no resource-level permissions.
+            - Sid: TranscribeStreaming
+              Effect: Allow
+              Action: [transcribe:StartStreamTranscription]
+              Resource: "*"
+            - Sid: TranscribeBatchJobs
+              Effect: Allow
+              Action: [transcribe:StartTranscriptionJob, transcribe:GetTranscriptionJob, transcribe:DeleteTranscriptionJob]
+              Resource: !Sub arn:aws:transcribe:${AWS::Region}:${AWS::AccountId}:transcription-job/threshold-*
+            # Only the three configured models: each US inference profile plus the foundation model it routes to.
+            - Sid: BedrockConfiguredModels
+              Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockTranslateModelId}
+                - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockFallbackModelId}
+                - !Sub
+                  - arn:aws:bedrock:*::foundation-model/${Base}
+                  - Base: !Select [1, !Split ["us.", !Ref BedrockModelId]]
+                - !Sub
+                  - arn:aws:bedrock:*::foundation-model/${Base}
+                  - Base: !Select [1, !Split ["us.", !Ref BedrockTranslateModelId]]
+                - !Sub
+                  - arn:aws:bedrock:*::foundation-model/${Base}
+                  - Base: !Select [1, !Split ["us.", !Ref BedrockFallbackModelId]]
+
+  WorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${WorkerFunction}
+      RetentionInDays: 14
+
+  # ---------------------------------------------------------------- Data ----------------------
+  # Keys must match app/store.py:DynamoStore (checked by backend/tests/test_infra.py).
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: gsi_pk
+          AttributeType: S
+        - AttributeName: updated_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: by_updated
+          KeySchema:
+            - AttributeName: gsi_pk
+              KeyType: HASH
+            - AttributeName: updated_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification: # resident-configurable retention (ResidentSettings.retention_days)
+        AttributeName: expires_at
+        Enabled: true
+
+  # Transient audio only: Ring clips, batch-fallback uploads, batch transcripts, Polly replies (Phase 4).
+  # Code deletes objects after use; the 1-day lifecycle rule is the backstop. Never public.
+  AudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-transient-audio
+            Status: Enabled
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  AudioBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AudioBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt AudioBucket.Arn
+              - !Sub ${AudioBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # Escalations to trusted contacts. Without a subscription, publishes succeed but reach nobody;
+  # the UI still records each escalation.
+  EscalationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Threshold
+      KmsMasterKeyId: alias/aws/sns
+
+  EscalationEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasEscalationEmail
+    Properties:
+      TopicArn: !Ref EscalationTopic
+      Protocol: email
+      Endpoint: !Ref EscalationEmail
+
+  SettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # ---------------------------------------------------------------- Site ----------------------
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOacRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${SiteBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt SiteBucket.Arn
+              - !Sub ${SiteBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  SiteOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-site-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Maps clean URLs to exported files (/door -> /door.html). Unknown pages get /404.html.
+  # Deliberately no distribution-wide CustomErrorResponses: they would also rewrite API 403/404s.
+  SiteRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub ${AWS::StackName}-site-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Clean URLs for the Next.js static export
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        // Keep in sync with web/app/**/page.tsx (enforced by backend/tests/test_infra.py).
+        var ROUTES = ['/'];
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          var last = uri.substring(uri.lastIndexOf('/') + 1);
+          if (last.indexOf('.') !== -1) {
+            return request;
+          }
+          if (uri.length > 1 && uri.charAt(uri.length - 1) === '/') {
+            uri = uri.substring(0, uri.length - 1);
+          }
+          if (uri === '/') {
+            request.uri = '/index.html';
+          } else if (ROUTES.indexOf(uri) !== -1) {
+            request.uri = uri + '.html';
+          } else {
+            request.uri = '/404.html';
+          }
+          return request;
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Threshold (site + /api)
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: api
+            DomainName: !Sub ${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SiteRewriteFunction.FunctionMetadata.FunctionARN
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            # Forwards all viewer headers (incl. Authorization and Ring's X-Signature) and query strings.
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+
+  # ---------------------------------------------------------------- Cost guard ----------------
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Condition: HasAlertEmail
+    Properties:
+      Budget:
+        BudgetName: !Sub ${AWS::StackName}-monthly-cost
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+Outputs:
+  SiteUrl:
+    Description: Public URL (UI and /api)
+    Value: !Sub https://${Distribution.DomainName}
+  RingWebhookUrl:
+    Description: URL to register as the Ring webhook (Phase 2)
+    Value: !Sub https://${Distribution.DomainName}/api/webhooks/ring
+  ApiDirectUrl:
+    Description: API Gateway URL (fallback; bypasses CloudFront)
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  SiteBucketName:
+    Value: !Ref SiteBucket
+  AudioBucketName:
+    Description: Transient audio bucket (set AUDIO_BUCKET in .env to use the batch fallback locally)
+    Value: !Ref AudioBucket
+  DistributionId:
+    Value: !Ref Distribution
