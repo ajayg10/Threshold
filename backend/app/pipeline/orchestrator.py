@@ -13,7 +13,7 @@ from collections.abc import Callable
 from datetime import timedelta
 
 from ..config import get_settings
-from ..models import EventRecord, PipelineInfo, Timings, VisitorCard
+from ..models import EventRecord, PipelineInfo, ResidentSettings, Timings, VisitorCard
 from ..ring.real import RealRingClient
 from ..seeds import audio_path, scenario_from_audio_url
 from ..store import get_store
@@ -61,9 +61,10 @@ def transcribe_ring_clip(record: EventRecord, info: PipelineInfo) -> TranscriptR
     return result
 
 
-def run(
-    record: EventRecord, on_preliminary: Callable[[VisitorCard, PipelineInfo], None] | None = None
-) -> tuple[VisitorCard, PipelineInfo]:
+PreliminaryCallback = Callable[[VisitorCard, PipelineInfo], None]
+
+
+def run(record: EventRecord, on_preliminary: PreliminaryCallback | None = None) -> tuple[VisitorCard, PipelineInfo]:
     settings = get_settings()
     resident = get_store().get_settings()
     info = PipelineInfo()
@@ -84,6 +85,20 @@ def run(
         transcript = TranscriptResult("", None, "none", 0)
     info.transcript_source = transcript.source
 
+    card = interpret(record, transcript, resident, info, started, audio_ms, on_preliminary)
+    return card, info
+
+
+def interpret(
+    record: EventRecord,
+    transcript: TranscriptResult,
+    resident: ResidentSettings,
+    info: PipelineInfo,
+    started: float,
+    audio_ms: int = 0,
+    on_preliminary: PreliminaryCallback | None = None,
+) -> VisitorCard:
+    """Transcript -> perception -> policy (guardrails, then agent where needed). Also used by the evals."""
     if transcript.has_speech:
         perception = perceive(transcript.transcript, transcript.language, resident)
         output, perceive_ms = perception.output, perception.elapsed_ms
@@ -112,10 +127,11 @@ def run(
     policy_started = time.perf_counter()
     perceived = card
     card, guard_notes = guardrails.apply(perceived, None, resident.resident_language)
-    if not policy_agent.needs_agent(perceived):
+    # Routing uses the guardrailed card: an injection the model missed still gets the agent.
+    if not policy_agent.needs_agent(card):
         info.notes += guard_notes
         card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
-        return card, info
+        return card
 
     # Step 2: publish that card now, then let the Strands agent review it. The agent can only raise
     # risk or escalate, so the early card is never less safe than the final one.
@@ -123,10 +139,10 @@ def run(
         card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
         on_preliminary(card, info.model_copy(update={"policy": "pending", "notes": info.notes + guard_notes}))
 
-    result = policy_agent.run(perceived, record, resident)
+    result = policy_agent.run(card, record, resident)
     info.policy, info.policy_model = result.status, get_settings().bedrock_policy_model_id
     info.notes += result.notes
     card, guard_notes = guardrails.apply(perceived, result.decision, resident.resident_language)
     info.notes += guard_notes
     card.timings_ms = timings(round((time.perf_counter() - policy_started) * 1000))
-    return card, info
+    return card

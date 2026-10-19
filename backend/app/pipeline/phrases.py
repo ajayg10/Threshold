@@ -9,6 +9,8 @@ TEXT: dict[str, dict[str, str]] = {
     "en": {
         "safe_summary": "Someone is at the door. Threshold could not analyse what they said.",
         "no_speech_summary": "Someone is at the door but has not said anything.",
+        "injection_summary": "The visitor tried to give orders to Threshold instead of talking to you. Be careful.",
+        "injection_reason": "The visitor tried to trick Threshold.",
         "who": "Who is it?",
         "repeat": "Please say that again.",
         "wait": "Please wait one minute.",
@@ -21,6 +23,8 @@ TEXT: dict[str, dict[str, str]] = {
     "hi": {
         "safe_summary": "दरवाज़े पर कोई है। Threshold उनकी बात समझ नहीं पाया।",
         "no_speech_summary": "दरवाज़े पर कोई है, पर उन्होंने कुछ नहीं कहा।",
+        "injection_summary": "आगंतुक ने आपसे बात करने के बजाय Threshold को आदेश देने की कोशिश की। सावधान रहें।",
+        "injection_reason": "आगंतुक ने Threshold को धोखा देने की कोशिश की।",
         "who": "कौन है?",
         "repeat": "कृपया फिर से बोलिए।",
         "wait": "कृपया एक मिनट रुकिए।",

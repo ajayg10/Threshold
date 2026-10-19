@@ -44,12 +44,14 @@ class ReplyResult:
 @lru_cache
 def _clients():
     import boto3
+    from botocore.config import Config
 
     region = get_settings().aws_region
     return (
         boto3.client("bedrock-runtime", region_name=region),
         boto3.client("polly", region_name=region),
-        boto3.client("s3", region_name=region),
+        # Presigned reply-audio URLs: SigV4 explicitly (recommended by AWS; works for every bucket).
+        boto3.client("s3", region_name=region, config=Config(signature_version="s3v4")),
     )
 
 

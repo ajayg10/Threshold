@@ -60,9 +60,14 @@ def health() -> dict:
 # ---------------------------------------------------------------- Ring webhook (HMAC, no bearer token)
 
 
+MAX_WEBHOOK_BYTES = 64 * 1024  # Ring v1.1 payloads are well under 2 KB
+
+
 @public.post("/webhooks/ring", response_model=IngestResult)
 async def ring_webhook(request: Request) -> IngestResult:
     body = await request.body()  # raw bytes: the signature covers these exactly
+    if len(body) > MAX_WEBHOOK_BYTES:
+        raise HTTPException(413, "Webhook body too large")
     try:
         return ingest_webhook(body, request.headers.get(SIGNATURE_HEADER))
     except InvalidSignature as err:
@@ -211,6 +216,7 @@ def door_display() -> dict:
     return {
         "latest_event": None if newest is None else {
             "id": newest.event.id,
+            "created_at": newest.created_at,
             "status": newest.status,
             "visitor_language": newest.card.detected_language if newest.card else None,
             "has_reply": bool(newest.replies),

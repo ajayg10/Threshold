@@ -1,8 +1,10 @@
 """Policy agent (Strands Agents SDK on Amazon Bedrock). Build prompt 4.2.
 
-It runs only for cards that need judgement (risk >= medium, or service/unknown/solicitor visitors).
-Low-risk deliveries, known contacts and no-speech take the fast path. So do emergencies: the
-emergency card must not wait on an agent, and the guardrails already enforce its safety rules.
+It runs only for cards that need judgement (risk >= medium, or service/unknown visitors).
+Low-risk deliveries, known contacts, salespeople and no-speech take the fast path. So do emergencies:
+the emergency card must not wait on an agent, and the guardrails already enforce its safety rules.
+A low-risk salesperson claims no booking or authority (perception would have flagged that), so the
+agent's tools have nothing to check; in the evals it raised s5 to medium in 2 runs of 3.
 
 Tools: exactly lookup_expected_visits, get_trusted_contacts, get_time_context, notify_trusted_contact.
 Its PolicyDecision can only raise risk, add flags or require escalation (see guardrails.apply).
@@ -15,18 +17,16 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from ..config import get_settings
 from ..models import EventRecord, ResidentSettings, VisitorCard
-from .. import notify
-from .guardrails import PolicyDecision
+from .. import clock, notify
+from .guardrails import PolicyDecision, plain_reason
 
 log = logging.getLogger(__name__)
 
 ALLOWED_TOOLS = ("lookup_expected_visits", "get_trusted_contacts", "get_time_context", "notify_trusted_contact")
-AGENT_VISITOR_TYPES = {"service", "unknown", "solicitor"}
+AGENT_VISITOR_TYPES = {"service", "unknown"}
 MAX_TURNS = 6
 
 SYSTEM_PROMPT = """You are the policy agent of Threshold, an assistive front-door interpreter for a resident who cannot hear or does not share the visitor's language. Threshold never unlocks or opens anything.
@@ -37,11 +37,12 @@ Decide whether the card's risk is too low and whether a trusted contact should b
 - You may only RAISE risk or ADD flags. You can never lower risk, remove flags, or cancel an escalation.
 - Flags about what the visitor said (entry, codes, payment, injection) are already set by perception. You may add only unverified_authority_claim (a claimed booking or authority that your tools contradict) or tailgating_attempt.
 - A visitor arriving outside a booked window is a reason for medium risk and asking for ID, not for escalation by itself.
+- Ordinary sales, canvassing or advice stays at the card's risk: do not raise it unless the visitor asks to come inside, for codes or payment, or claims an authority or booking your tools contradict. Being unexpected is not a risk by itself.
 - First step: call lookup_expected_visits, get_time_context and get_trusted_contacts together, in parallel, in one turn. Use them to check the visitor's claims (does it match a booked visit? is it late at night?).
 - Call notify_trusted_contact (at most once) only when the visit is high risk: a request to come inside, for codes/OTPs or payment, or an unverified authority claim with pressure. Do not notify for ordinary deliveries, sales or matched bookings.
 - Never suggest letting the visitor in.
 
-Finish with your decision. Keep the reason under 20 words, in the resident's language."""
+Finish with your decision. Keep the reason under 20 words, in the resident's language, in plain everyday words (no technical terms such as prompt injection, pretext or AI)."""
 
 
 @dataclass
@@ -77,7 +78,7 @@ def build_tools(record: EventRecord, resident: ResidentSettings) -> list:
     @tool
     def get_time_context() -> dict:
         """Local time at the resident's home, weekday, and whether it is night (22:00-06:00)."""
-        now = datetime.now(ZoneInfo(resident.timezone))
+        now = clock.local_now(resident.timezone)
         return {"local_time": now.strftime("%H:%M"), "weekday": now.strftime("%A"), "is_night": now.hour >= 22 or now.hour < 6}
 
     @tool
@@ -94,7 +95,8 @@ def build_tools(record: EventRecord, resident: ResidentSettings) -> list:
         contact = notify.find_contact(resident, contact_id)
         if contact is None:
             return f"Unknown contact_id {contact_id!r}. Use get_trusted_contacts."
-        esc = notify.escalate(record, resident, contact, by="agent", reason=reason[:200])
+        reason = plain_reason(reason[:200], resident.resident_language)
+        esc = notify.escalate(record, resident, contact, by="agent", reason=reason)
         return f"Alerted {contact.name} ({esc.channel})."
 
     tools = [lookup_expected_visits, get_trusted_contacts, get_time_context, notify_trusted_contact]
@@ -116,6 +118,7 @@ def build_prompt(card: VisitorCard, resident: ResidentSettings) -> str:
 
 
 def run(card: VisitorCard, record: EventRecord, resident: ResidentSettings) -> PolicyResult:
+    from botocore.config import Config
     from strands import Agent
     from strands.models import BedrockModel
 
@@ -131,6 +134,12 @@ def run(card: VisitorCard, record: EventRecord, resident: ResidentSettings) -> P
                 temperature=0,
                 max_tokens=800,
                 streaming=False,
+                # cancel_signal is only checked between agent steps, and Strands' default client waits
+                # up to 120 s per call with legacy retries: in the evals two timed-out runs took 26-27 s.
+                # Each agent call is short (tool calls or the decision), so 8 s is generous.
+                boto_client_config=Config(
+                    connect_timeout=3, read_timeout=8, retries={"max_attempts": 2, "mode": "standard"}
+                ),
             ),
             tools=build_tools(record, resident),
             system_prompt=SYSTEM_PROMPT,

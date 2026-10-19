@@ -42,7 +42,7 @@ def test_agent_has_exactly_the_four_allowed_tools():
 @pytest.mark.parametrize(
     "visitor_type, risk, expected",
     [("delivery", "low", False), ("known_contact", "low", False), ("no_speech", "low", False),
-     ("emergency", "high", False), ("solicitor", "low", True), ("service", "low", True),
+     ("emergency", "high", False), ("solicitor", "low", False), ("solicitor", "medium", True), ("service", "low", True),
      ("unknown", "low", True), ("delivery", "medium", True)],
 )
 def test_needs_agent(visitor_type, risk, expected):
@@ -198,4 +198,18 @@ def test_settings_roundtrip(client, auth_headers):
     s["resident_language"] = "hi-IN"
     assert client.put("/api/settings", json=s, headers=auth_headers).json()["resident_language"] == "hi-IN"
     s["retention_days"] = 1000
+    assert client.put("/api/settings", json=s, headers=auth_headers).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"timezone": "Mars/Olympus"},
+        {"resident_language": "fr-FR"},
+        {"trusted_contacts": [{"id": "x", "name": "n" * 200, "relation": "r"}]},
+        {"expected_visits": [{"id": "v", "label": "AC", "window_start": "25:00", "window_end": "26:00"}]},
+    ],
+)
+def test_settings_are_bounded_because_they_reach_prompts(client, auth_headers, patch):
+    s = {**client.get("/api/settings", headers=auth_headers).json(), **patch}
     assert client.put("/api/settings", json=s, headers=auth_headers).status_code == 422

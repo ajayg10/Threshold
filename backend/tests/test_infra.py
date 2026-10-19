@@ -52,6 +52,12 @@ def test_policy_model_is_covered_by_iam():
     assert "BEDROCK_POLICY_MODEL_ID: !Ref BedrockModelId" in TEMPLATE
 
 
+def test_costly_routes_have_their_own_throttles():
+    for route in ("POST /api/demo/trigger", "POST /api/events/{event_id}/reply"):
+        assert f'"{route}":' in TEMPLATE
+    assert "Path: /api/demo/trigger" in TEMPLATE and "Path: /api/events/{event_id}/reply" in TEMPLATE
+
+
 def test_worker_handler_exists():
     from app import worker
 

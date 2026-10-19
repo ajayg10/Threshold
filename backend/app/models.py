@@ -5,9 +5,10 @@ tests/test_no_unlock.py fails if one is ever introduced.
 """
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
+from zoneinfo import available_timezones
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 # --- 3.1 Normalized door event ---------------------------------------------------------------
 
@@ -162,30 +163,42 @@ class EventRecord(Strict):
 # --- Resident settings -----------------------------------------------------------------------
 
 
+# Settings text flows into model prompts, so every field is bounded.
+Short = Annotated[str, StringConstraints(max_length=80)]
+HHMM = Annotated[str, StringConstraints(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+
+
 class TrustedContact(Strict):
-    id: str
-    name: str
-    relation: str
-    phone: str | None = None
+    id: Short
+    name: Short
+    relation: Short
+    phone: Annotated[str, StringConstraints(max_length=30)] | None = None
 
 
 class ExpectedVisit(Strict):
-    id: str
-    label: str
-    window_start: str  # "HH:MM", resident local time
-    window_end: str
-    keywords: list[str] = Field(default_factory=list)
+    id: Short
+    label: Annotated[str, StringConstraints(max_length=120)]
+    window_start: HHMM  # resident local time
+    window_end: HHMM
+    keywords: list[Annotated[str, StringConstraints(max_length=40)]] = Field(default_factory=list, max_length=20)
 
 
 class ResidentSettings(Strict):
-    resident_name: str = "Resident"
-    resident_language: str = "en-IN"
-    timezone: str = "Asia/Kolkata"
-    trusted_contacts: list[TrustedContact] = Field(default_factory=list)
-    expected_visits: list[ExpectedVisit] = Field(default_factory=list)
+    resident_name: Short = "Resident"
+    resident_language: Literal["en-IN", "hi-IN"] = "en-IN"
+    timezone: Short = "Asia/Kolkata"
+    trusted_contacts: list[TrustedContact] = Field(default_factory=list, max_length=10)
+    expected_visits: list[ExpectedVisit] = Field(default_factory=list, max_length=20)
     retention_days: int = Field(default=7, ge=1, le=90)
-    consent_notice: str = (
+    consent_notice: Annotated[str, StringConstraints(max_length=1000)] = (
         "This doorbell transcribes and translates what visitors say so the resident can "
         "understand them. Audio is processed and then deleted; only text is kept. "
         "Recording-consent laws vary by jurisdiction."
     )
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        if value not in available_timezones():
+            raise ValueError(f"unknown time zone {value!r}")
+        return value

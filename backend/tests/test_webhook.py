@@ -147,6 +147,12 @@ def test_reserialized_body_fails_verification(client):
     assert client.post("/api/webhooks/ring", content=tampered, headers=headers).status_code == 401
 
 
+def test_oversized_webhook_is_rejected_before_parsing(client):
+    body = b'{"pad":"' + b"x" * (64 * 1024) + b'"}'
+    r = client.post("/api/webhooks/ring", content=body, headers={"X-Signature": sign(body, RING_KEY)})
+    assert r.status_code == 413
+
+
 def test_malformed_but_signed_payload_is_400(client):
     body = b'{"not": "a ring payload"}'
     r = client.post("/api/webhooks/ring", content=body, headers={"X-Signature": sign(body, RING_KEY)})
