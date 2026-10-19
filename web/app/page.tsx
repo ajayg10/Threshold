@@ -1,55 +1,69 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { API_BASE, getHealth, type Health } from "@/lib/api";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import EventItem from "@/components/EventItem";
+import { useEvents } from "@/lib/hooks";
+import { VISITOR_TYPE } from "@/lib/labels";
 
-type State = { kind: "loading" } | { kind: "ok"; health: Health } | { kind: "error"; message: string };
-
-export default function Home() {
-  const [state, setState] = useState<State>({ kind: "loading" });
+/** Door: live feed of visitors. New arrivals get a slow visual pulse, a vibration where supported,
+ * and a screen-reader announcement. Nothing relies on sound. */
+export default function DoorPage() {
+  const { events, loaded, error } = useEvents(1000);
+  const seen = useRef<Set<string> | null>(null);
+  const announced = useRef<Set<string>>(new Set());
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [announcement, setAnnouncement] = useState("");
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    getHealth(ctrl.signal)
-      .then((health) => setState({ kind: "ok", health }))
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setState({ kind: "error", message: err.message });
-      });
-    return () => ctrl.abort();
-  }, []);
+    if (!loaded) return;
+    if (seen.current === null) {
+      // First successful load: existing events are not "new".
+      seen.current = new Set(events.map((e) => e.event.id));
+      events.forEach((e) => e.card && announced.current.add(e.event.id));
+      return;
+    }
+    const arrivals = events.filter((e) => !seen.current!.has(e.event.id));
+    if (arrivals.length) {
+      arrivals.forEach((e) => seen.current!.add(e.event.id));
+      setFresh((prev) => new Set([...prev, ...arrivals.map((e) => e.event.id)]));
+      try {
+        navigator.vibrate?.([200, 100, 200]);
+      } catch {
+        /* not supported (e.g. iOS Safari): the visual cue still shows */
+      }
+    }
+    const ready = events.find((e) => e.card && !announced.current.has(e.event.id));
+    if (ready?.card) {
+      announced.current.add(ready.event.id);
+      setAnnouncement(`New visitor. ${VISITOR_TYPE[ready.card.visitor_type].label}. ${ready.card.summary}`);
+    }
+  }, [events, loaded]);
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10">
-      <h1 className="text-4xl font-bold">Threshold</h1>
-      <p className="mt-3 text-muted">
-        The front door&apos;s interpreter for people who cannot hear, or cannot speak the visitor&apos;s language.
+    <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <h1 className="text-3xl font-bold">At the door</h1>
+      <p aria-live="polite" role="status" className="sr-only">
+        {announcement}
       </p>
-
-      <section aria-labelledby="status-heading" className="mt-8 rounded-xl bg-surface p-5">
-        <h2 id="status-heading" className="text-xl font-semibold">
-          Backend status
-        </h2>
-        <div role="status" aria-live="polite" className="mt-2">
-          {state.kind === "loading" && <p>Checking {API_BASE}/health…</p>}
-          {state.kind === "ok" && (
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
-              <dt className="font-semibold">Status</dt>
-              <dd className="text-ok font-semibold">✓ {state.health.status}</dd>
-              <dt className="font-semibold">Version</dt>
-              <dd>{state.health.version}</dd>
-              <dt className="font-semibold">Environment</dt>
-              <dd>
-                {state.health.env} ({state.health.region})
-              </dd>
-              <dt className="font-semibold">Ring API</dt>
-              <dd>{state.health.ring_api_configured ? "token configured" : "not configured (test harness only)"}</dd>
-            </dl>
-          )}
-          {state.kind === "error" && (
-            <p className="text-danger font-semibold">✗ Backend unreachable: {state.message}</p>
-          )}
+      {error && !events.length && (
+        <p role="alert" className="mt-4 font-semibold text-danger">
+          Cannot reach Threshold: {error.message}
+        </p>
+      )}
+      {loaded && events.length === 0 && (
+        <div className="card mt-6 p-6">
+          <p className="text-xl">No visitors yet. New visitors appear here within seconds.</p>
+          <p className="mt-2 text-muted">
+            For a demo, open the <Link href="/demo" className="underline">demo panel</Link>.
+          </p>
         </div>
-      </section>
+      )}
+      <ul className="mt-6 space-y-4">
+        {events.map((e) => (
+          <EventItem key={e.event.id} record={e} isNew={fresh.has(e.event.id)} />
+        ))}
+      </ul>
     </main>
   );
 }

@@ -1,23 +1,21 @@
 @import "tailwindcss";
 
-/* High-contrast tokens (WCAG AA or better in both schemes). */
+/* Tokens chosen for WCAG AA (4.5:1+) text contrast in both schemes. */
 :root {
   --background: #ffffff;
   --foreground: #0b1f33;
   --muted: #3d4f61;
   --surface: #f1f5f9;
+  --line: #c9d3dd;
+  --accent: #0b5cad;
+  --accent-fg: #ffffff;
+  --focus: #b45309;
   --ok: #0f5132;
+  --ok-bg: #e6f4ea;
+  --warn: #6b4200;
+  --warn-bg: #fff4dc;
   --danger: #8a1c1c;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-surface: var(--surface);
-  --color-ok: var(--ok);
-  --color-danger: var(--danger);
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
+  --danger-bg: #fde8e8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,9 +24,34 @@
     --foreground: #f1f5f9;
     --muted: #c3cfdb;
     --surface: #1a2433;
+    --line: #34465c;
+    --accent: #7cb8ff;
+    --accent-fg: #0b1220;
+    --focus: #fbbf24;
     --ok: #7ee2a8;
+    --ok-bg: #0f2a1c;
+    --warn: #ffd27a;
+    --warn-bg: #33270a;
     --danger: #ffb4b4;
+    --danger-bg: #3b1414;
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
 }
 
 html {
@@ -43,6 +66,105 @@ body {
   line-height: 1.5;
 }
 
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: -4rem;
+    z-index: 50;
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-radius: 0.5rem;
+  }
+  .skip-link:focus {
+    top: 0.5rem;
+  }
+  .nav-link {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    padding: 0 0.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+  }
+  .nav-link-active {
+    background: var(--surface);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .btn {
+    display: inline-flex;
+    min-height: 3rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    border: 2px solid var(--line);
+    font-weight: 600;
+    text-align: left;
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
+  }
+  .btn-danger {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--background);
+  }
+  .field {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--line);
+    border-radius: 0.75rem;
+    background: var(--background);
+    color: var(--foreground);
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.625rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .card {
+    border: 2px solid var(--line);
+    border-radius: 1rem;
+    background: var(--background);
+  }
+}
+
+/* New-visitor pulse: one slow glow (well under 3 flashes per second), off for reduced motion. */
+@keyframes arrival {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--focus);
+  }
+}
+.arrival {
+  animation: arrival 2s ease-in-out 3;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -50,5 +172,9 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  .arrival {
+    animation: none;
+    outline: 4px solid var(--focus);
   }
 }

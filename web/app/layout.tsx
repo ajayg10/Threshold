@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import AuthGate from "@/components/AuthGate";
+import ServiceWorker from "@/components/ServiceWorker";
+import Shell from "@/components/Shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Threshold",
   description: "The front door's interpreter for people who cannot hear, or cannot speak the visitor's language.",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -13,7 +18,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <ServiceWorker />
+        <AuthGate>
+          <Shell>{children}</Shell>
+        </AuthGate>
+      </body>
     </html>
   );
 }
