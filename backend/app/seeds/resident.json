@@ -1,0 +1,20 @@
+{
+  "_disclosure": "SYNTHETIC resident profile, contacts and expected visit. See docs/SEEDED_DATA.md.",
+  "resident_name": "Asha (seeded)",
+  "resident_language": "en-IN",
+  "timezone": "Asia/Kolkata",
+  "trusted_contacts": [
+    {"id": "tc_rahul", "name": "Rahul", "relation": "son", "phone": "+91-00000-00001"},
+    {"id": "tc_priya", "name": "Priya", "relation": "neighbour, next door", "phone": "+91-00000-00002"}
+  ],
+  "expected_visits": [
+    {
+      "id": "ev_ac_service",
+      "label": "AC service (CoolAir), 4-5 pm",
+      "window_start": "16:00",
+      "window_end": "17:00",
+      "keywords": ["AC", "air conditioner", "service", "CoolAir"]
+    }
+  ],
+  "retention_days": 7
+}
