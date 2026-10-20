@@ -13,11 +13,11 @@ import type { EventRecord, ResidentSettings } from "@/lib/types";
 
 export default function EventPage() {
   return (
-    <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-      <Link href="/" className="underline">
-        ← All visitors
+    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+      <Link href="/" className="inline-flex items-center gap-1.5 text-base font-semibold text-accent hover:underline">
+        ← Back to front door
       </Link>
-      <Suspense fallback={<p className="mt-6">Loading…</p>}>
+      <Suspense fallback={<p className="mt-6 text-muted">Loading visitor details…</p>}>
         <EventView />
       </Suspense>
     </main>
@@ -33,45 +33,66 @@ function EventView() {
     client.settings().then(setSettings).catch(() => setSettings(null));
   }, []);
 
-  if (!id) return <p className="mt-6">No visitor selected.</p>;
+  if (!id) return <p className="mt-6 text-xl">No visitor selected.</p>;
   if (error && !record) {
     return (
-      <p role="alert" className="mt-6 font-semibold text-danger">
-        {error.message}
-      </p>
+      <div role="alert" className="mt-6 rounded-xl border border-danger/40 bg-danger-bg p-4 font-semibold text-danger">
+        ⚠️ {error.message}
+      </div>
     );
   }
-  if (!record) return <p className="mt-6">Loading…</p>;
+  if (!record) return <p className="mt-6 text-muted">Loading visitor card…</p>;
   return <VisitorCardView record={record} settings={settings} />;
 }
 
 function VisitorCardView({ record, settings }: { record: EventRecord; settings: ResidentSettings | null }) {
   const residentLanguage = settings?.resident_language ?? "en-IN";
   const { card, pipeline } = record;
+  const [copied, setCopied] = useState(false);
+
+  function copyTranscript() {
+    if (!card) return;
+    const textToCopy = card.translation 
+      ? `Original (${languageName(card.detected_language)}): ${card.transcript}\nTranslation: ${card.translation}`
+      : card.transcript;
+    navigator.clipboard?.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
     <article aria-labelledby="visitor-heading" className="mt-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {card && <VisitorTypeBadge type={card.visitor_type} />}
-        <span className="text-muted">
-          {record.device_name ?? "Front door"} · <time dateTime={record.created_at}>{timeAgo(record.created_at)}</time>
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {card && <VisitorTypeBadge type={card.visitor_type} />}
+          <span className="text-sm font-medium text-muted">
+            {record.device_name ?? "Front door"} · <time dateTime={record.created_at}>{timeAgo(record.created_at)}</time>
+          </span>
+        </div>
+        <SourceBadges record={record} />
       </div>
-      <SourceBadges record={record} />
 
       {!card ? (
-        <div role="status" aria-live="polite" className="card mt-4 p-6">
-          <h1 id="visitor-heading" className="text-3xl font-bold">
-            {record.status === "error" ? "Could not analyse this visit" : "Interpreting…"}
+        <div role="status" aria-live="polite" className="card mt-6 p-8 text-center sm:p-12">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface border border-line shadow-sm text-2xl" aria-hidden="true">
+            🎙️
+          </div>
+          <h1 id="visitor-heading" className="mt-4 text-2xl font-bold">
+            {record.status === "error" ? "Could not analyse this visit" : "Interpreting visitor's words…"}
           </h1>
-          <p className="mt-2 text-xl">
-            {record.status === "error" ? record.error : "Someone is at the door. Their words appear here in a few seconds."}
+          <p className="mx-auto mt-2 max-w-lg text-lg text-muted">
+            {record.status === "error"
+              ? record.error
+              : "Amazon Transcribe and Bedrock are processing the audio clip. The transcript and replies will appear in 3–4 seconds."}
           </p>
         </div>
       ) : (
         <>
-          <h1 id="visitor-heading" className="mt-3 text-3xl font-bold leading-tight">
-            {card.summary}
-          </h1>
+          <div className="mt-6">
+            <h1 id="visitor-heading" className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+              {card.summary}
+            </h1>
+          </div>
 
           <div className="mt-4" aria-live="polite">
             <RiskBanner
@@ -80,53 +101,86 @@ function VisitorCardView({ record, settings }: { record: EventRecord; settings: 
               reason={card.escalation.required ? card.escalation.reason : undefined}
               emergency={card.visitor_type === "emergency"}
             />
-            <p className="mt-2 text-muted" role="status">
-              {pipeline?.policy === "pending" && "Safety check in progress. Risk can only go up from here."}
-              {pipeline?.policy === "agent" && "✓ Safety check complete."}
-              {pipeline?.policy === "agent_failed" && "Safety check unavailable; built-in safety rules applied."}
-            </p>
+            <div className="mt-2.5 flex items-center gap-2 text-sm text-muted" role="status">
+              {pipeline?.policy === "pending" && (
+                <>
+                  <span className="h-2.5 w-2.5 rounded-full bg-warn pulse-dot" aria-hidden="true" />
+                  <span className="font-semibold text-warn">Strands policy check in progress. Risk level can only go up.</span>
+                </>
+              )}
+              {pipeline?.policy === "agent" && (
+                <>
+                  <span className="text-ok font-bold">✓</span>
+                  <span>Safety and calendar verification complete.</span>
+                </>
+              )}
+              {pipeline?.policy === "agent_failed" && (
+                <span>Safety check unavailable; deterministic safety rules applied.</span>
+              )}
+            </div>
           </div>
 
           {card.matched_expected_visit && (
-            <p className="badge mt-3 border-ok bg-ok-bg text-base text-ok">
-              ✓ Matches expected visit: {card.matched_expected_visit.label}
-            </p>
+            <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-ok/40 bg-ok-bg px-3 py-2 text-base font-semibold text-ok">
+              <span>✓</span>
+              <span>Matches scheduled appointment: {card.matched_expected_visit.label}</span>
+            </div>
           )}
 
           {card.transcript && (
-            <section aria-label="What they said" className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="card bg-surface p-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                  They said ({languageName(card.detected_language)})
-                </h2>
-                <p lang={card.detected_language} className="mt-1 text-xl">
-                  {card.transcript}
-                </p>
+            <section aria-label="What they said" className="mt-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-semibold uppercase tracking-wider text-muted">Speech & Translation</span>
+                <button
+                  type="button"
+                  onClick={copyTranscript}
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  {copied ? "✓ Copied to clipboard" : "📋 Copy text"}
+                </button>
               </div>
-              {card.translation && !sameLanguage(card.detected_language, residentLanguage) && (
-                <div className="card bg-surface p-4">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Translation</h2>
-                  <p className="mt-1 text-xl">{card.translation}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="card p-5">
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted">
+                    <span>Visitor Spoke</span>
+                    <span className="rounded bg-surface px-1.5 py-0.5 border border-line">{languageName(card.detected_language)}</span>
+                  </div>
+                  <p lang={card.detected_language} className="mt-2 text-xl font-medium leading-relaxed">
+                    “{card.transcript}”
+                  </p>
                 </div>
-              )}
+                {card.translation && !sameLanguage(card.detected_language, residentLanguage) && (
+                  <div className="card p-5 bg-surface/70">
+                    <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted">
+                      <span>Translated to</span>
+                      <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent font-semibold">Your Language</span>
+                    </div>
+                    <p className="mt-2 text-xl font-medium leading-relaxed">
+                      “{card.translation}”
+                    </p>
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
-          <HelpPanel record={record} contacts={settings?.trusted_contacts ?? []} />
           <ReplyPanel eventId={record.event.id} card={card} />
+          <HelpPanel record={record} contacts={settings?.trusted_contacts ?? []} />
 
-          <details className="mt-6 text-muted">
-            <summary className="cursor-pointer font-semibold">How this card was made</summary>
-            <ul className="mt-2 list-disc pl-6">
+          <details className="mt-8 rounded-xl border border-line bg-surface/50 p-4 text-sm text-muted">
+            <summary className="cursor-pointer font-semibold text-foreground">
+              🔍 Pipeline provenance & timings
+            </summary>
+            <ul className="mt-3 space-y-1.5 list-disc pl-5">
               <li>
-                Ready {seconds(Math.max(0, card.timings_ms.total - card.timings_ms.audio))} after the visitor stopped
-                speaking (transcribe {seconds(card.timings_ms.transcribe)}, understand {seconds(card.timings_ms.perceive)},
-                safety {seconds(card.timings_ms.policy)}).
+                Ready <strong>{seconds(Math.max(0, card.timings_ms.total - card.timings_ms.audio))}</strong> after visitor stopped
+                speaking (transcribe: {seconds(card.timings_ms.transcribe)}, understand: {seconds(card.timings_ms.perceive)},
+                policy check: {seconds(card.timings_ms.policy)}).
               </li>
               {pipeline && (
                 <li>
-                  Audio: {pipeline.audio_source}; transcript: {pipeline.transcript_source}; model:{" "}
-                  {pipeline.perception_model ?? "none"}
+                  Audio source: <code className="font-semibold">{pipeline.audio_source}</code> · Transcript: <code className="font-semibold">{pipeline.transcript_source}</code> · Model:{" "}
+                  <code className="font-semibold">{pipeline.perception_model ?? "none"}</code>
                   {pipeline.perception_fallback ? " (fallback)" : ""}.
                 </li>
               )}

@@ -30,21 +30,29 @@ export default function HelpPanel({ record, contacts }: { record: EventRecord; c
   const emergency = card?.visitor_type === "emergency";
   const prominent = emergency || card?.escalation.required;
   return (
-    <section aria-labelledby="help-heading" className="mt-6">
-      <h2 id="help-heading" className="text-2xl font-bold">
-        Get help
-      </h2>
+    <section aria-labelledby="help-heading" className="mt-6 rounded-2xl border-2 border-line bg-surface p-6 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-line/60 pb-3">
+        <h2 id="help-heading" className="text-2xl font-bold tracking-tight">
+          Assistance & Escalation
+        </h2>
+        <span className="text-xs text-muted">Never shares audio or full transcript</span>
+      </div>
+
       {emergency && (
-        <a href={`tel:${EMERGENCY_NUMBER}`} className="btn btn-danger mt-3 w-full text-xl">
-          <span aria-hidden="true">📞</span> Call emergency services ({EMERGENCY_NUMBER})
-        </a>
+        <div className="mt-4 rounded-xl border-2 border-danger bg-danger-bg p-4 text-center">
+          <p className="font-bold text-danger text-lg">⚠️ Emergency conditions detected</p>
+          <a href={`tel:${EMERGENCY_NUMBER}`} className="btn btn-danger mt-3 w-full text-xl shadow-md">
+            <span aria-hidden="true">📞</span> Call Emergency Services ({EMERGENCY_NUMBER})
+          </a>
+        </div>
       )}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <label htmlFor="contact" className="block font-semibold">
-            Trusted contact
+          <label htmlFor="contact" className="block text-sm font-semibold uppercase tracking-wider text-muted">
+            Notify Trusted Contact
           </label>
-          <select id="contact" className="field" value={contactId} onChange={(e) => setChosen(e.target.value)}>
+          <select id="contact" className="field mt-1" value={contactId} onChange={(e) => setChosen(e.target.value)}>
             {contacts.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.relation})
@@ -54,32 +62,42 @@ export default function HelpPanel({ record, contacts }: { record: EventRecord; c
         </div>
         <button
           type="button"
-          className={`btn ${prominent ? "btn-primary" : ""}`}
+          className={`btn ${prominent ? "btn-danger" : "btn-primary"} sm:w-44`}
           onClick={alertFamily}
           disabled={busy || !contacts.length}
         >
-          <span aria-hidden="true">👪</span> {busy ? "Alerting…" : "Call family"}
+          <span aria-hidden="true">👪</span> {busy ? "Alerting…" : "Alert Family"}
         </button>
       </div>
+
       <div aria-live="polite" role="status">
         {result && (
-          <p className="mt-2 font-semibold text-ok">
-            ✓ {result.contact_name} was alerted{result.channel === "simulated" ? " (simulated: nothing was sent)" : " by SNS"}.
-          </p>
+          <div className="mt-3 rounded-lg border border-ok/40 bg-ok-bg p-3 text-sm font-semibold text-ok">
+            ✓ {result.contact_name} was alerted{result.channel === "simulated" ? " (simulated: logged to console)" : " by SNS"}.
+          </div>
         )}
-        {error && <p className="mt-2 font-semibold text-danger">{error}</p>}
+        {error && (
+          <div className="mt-3 rounded-lg border border-danger/40 bg-danger-bg p-3 text-sm font-semibold text-danger">
+            ⚠️ {error}
+          </div>
+        )}
       </div>
+
       {record.escalations.length > 0 && (
-        <ul className="mt-3 space-y-1 text-muted">
-          {record.escalations.map((e) => (
-            <li key={e.message_id}>
-              {e.by === "agent" ? "Threshold alerted" : "You alerted"} {e.contact_name} ·{" "}
-              {e.channel === "simulated" ? "simulated" : "SNS"} · {e.reason}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4 rounded-lg bg-surface-hover p-3 text-sm">
+          <span className="font-semibold text-foreground">Alert History:</span>
+          <ul className="mt-1 space-y-1 text-muted">
+            {record.escalations.map((e) => (
+              <li key={e.message_id}>
+                • {e.by === "agent" ? "Threshold AI alerted" : "Resident alerted"} <strong>{e.contact_name}</strong> ·{" "}
+                {e.channel === "simulated" ? "simulated" : "SNS"} · {e.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      {emergency && <p className="mt-2 text-base text-muted">Threshold is not a life-safety system.</p>}
+
+      {emergency && <p className="mt-3 text-xs text-muted">Notice: Threshold is not a life-safety system.</p>}
     </section>
   );
 }
