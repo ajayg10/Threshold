@@ -129,9 +129,21 @@ export default function DoorDisplayPage() {
                 onClick={() => play(mode.reply.audio_url)}
                 disabled={!mode.reply.audio_url}
               >
-                <span>{isPlaying ? "🔊 Playing…" : "▶"}</span>
+                <span>{isPlaying ? "🔊 Speaking…" : "▶"}</span>
                 <span>{COPY[mode.reply.visitor_language.startsWith("hi") ? "hi" : "en"].replay}</span>
               </button>
+
+              {isPlaying && (
+                <div className="flex items-end gap-1.5 h-8 px-4 py-1 rounded-2xl bg-surface border border-accent/30 shadow-sm" aria-label="Audio playback active">
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-1" />
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-2" />
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-3" />
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-4" />
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-2" />
+                  <span className="w-1.5 bg-accent rounded-full wave-bar-1" />
+                  <span className="text-xs font-bold text-accent ml-2 uppercase tracking-wider">Polly Neural Speech</span>
+                </div>
+              )}
             </div>
           </div>
         ) : mode.kind === "wait" ? (

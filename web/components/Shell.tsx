@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 const NAV = [
-  { href: "/", label: "Door" },
-  { href: "/history", label: "History" },
-  { href: "/settings", label: "Settings" },
-  { href: "/demo", label: "🎮 Demo Panel" },
+  { href: "/", label: "Door", icon: "🚪" },
+  { href: "/history", label: "History", icon: "🕒" },
+  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/demo", label: "Simulator", icon: "🎮" },
 ];
 
 /** App chrome for the resident's screens. The Door Display (/door) renders without it. */
@@ -21,18 +21,18 @@ export default function Shell({ children }: { children: ReactNode }) {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b border-line bg-background/90 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-line/70 bg-surface/85 backdrop-blur-md shadow-xs">
         <nav aria-label="Main" className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-y-2 px-4 py-2.5">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 py-1 text-2xl font-bold tracking-tight">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-sm" aria-hidden="true">
+            <Link href="/" className="flex items-center gap-2.5 py-1 text-2xl font-black tracking-tight group">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-gradient text-white shadow-sm transition-transform group-hover:scale-105" aria-hidden="true">
                 🚪
               </span>
-              <span>Threshold</span>
+              <span className="font-display font-extrabold text-foreground">Threshold</span>
             </Link>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/30 bg-ok-bg px-2.5 py-0.5 text-xs font-semibold text-ok">
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-ok/30 bg-ok-bg px-2.5 py-0.5 text-xs font-semibold text-ok">
               <span className="h-2 w-2 rounded-full bg-ok pulse-dot" aria-hidden="true" />
-              Active
+              Live Monitor
             </span>
           </div>
 
@@ -46,7 +46,8 @@ export default function Shell({ children }: { children: ReactNode }) {
                   aria-current={active ? "page" : undefined}
                   className={`nav-link ${active ? "nav-link-active" : ""}`}
                 >
-                  {item.label}
+                  <span className="text-sm opacity-80" aria-hidden="true">{item.icon}</span>
+                  <span>{item.label}</span>
                 </Link>
               );
             })}
@@ -54,24 +55,28 @@ export default function Shell({ children }: { children: ReactNode }) {
               href="/door"
               target="_blank"
               rel="noopener noreferrer"
-              className="nav-link text-accent hover:underline font-semibold ml-1"
+              className="nav-link text-accent hover:underline font-bold ml-1 border border-accent/30 bg-accent/5 hover:bg-accent/10"
               title="Open the visitor-facing Door Display tablet in a new tab"
             >
-              Door Display ↗
+              <span>Door Tablet</span>
+              <span className="text-xs">↗</span>
             </Link>
           </div>
         </nav>
       </header>
       {children}
-      <footer className="mx-auto mt-auto w-full max-w-4xl px-4 pb-8 pt-6 text-sm text-muted">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-line/60 pt-4">
-          <p>Threshold never unlocks or opens anything. It is not a life-safety system.</p>
-          <div className="flex gap-4">
-            <Link href="/demo" className="hover:underline">Demo Panel</Link>
+      <footer className="mx-auto mt-auto w-full max-w-4xl px-4 pb-8 pt-8 text-xs text-muted">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-line/60 pt-4">
+          <p className="flex items-center gap-1.5 font-medium">
+            <span>🛡️</span>
+            <span>Threshold never unlocks or opens anything. Accessibility and safe communications layer only.</span>
+          </p>
+          <div className="flex items-center gap-3 font-semibold">
+            <Link href="/demo" className="text-accent hover:underline">Simulator</Link>
             <span>·</span>
             <Link href="/settings" className="hover:underline">Settings</Link>
             <span>·</span>
-            <Link href="/door" target="_blank" className="hover:underline">Door Tablet</Link>
+            <Link href="/door" target="_blank" className="hover:underline">Door Display</Link>
           </div>
         </div>
       </footer>
