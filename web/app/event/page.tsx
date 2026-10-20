@@ -13,7 +13,7 @@ import type { EventRecord, ResidentSettings } from "@/lib/types";
 
 export default function EventPage() {
   return (
-    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6" suppressHydrationWarning>
       <Link href="/" className="inline-flex items-center gap-1.5 text-base font-semibold text-accent hover:underline">
         ← Back to front door
       </Link>

@@ -79,7 +79,7 @@ export default function DoorDisplayPage() {
   }
 
   return (
-    <main id="main" className="flex min-h-screen flex-col justify-between bg-background p-8 sm:p-16 selection:bg-accent selection:text-accent-fg">
+    <main id="main" className="flex min-h-screen flex-col justify-between bg-background p-8 sm:p-16 selection:bg-accent selection:text-accent-fg" suppressHydrationWarning>
       {/* Top Header / Mode Indicator */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line/60 pb-6">
         <div className="flex items-center gap-3">

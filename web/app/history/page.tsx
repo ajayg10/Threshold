@@ -26,7 +26,7 @@ export default function HistoryPage() {
   });
 
   return (
-    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6" suppressHydrationWarning>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line pb-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Visit History</h1>

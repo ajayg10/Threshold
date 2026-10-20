@@ -41,8 +41,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   if (state === "open") return <>{children}</>;
 
   return (
-    <main id="main" className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-16">
-      <div className="card p-8 shadow-lg">
+    <main id="main" className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-16" suppressHydrationWarning>
+      <div className="card p-8 shadow-lg" suppressHydrationWarning>
         <div className="flex items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-2xl text-accent-fg shadow-sm" aria-hidden="true">
             🚪
