@@ -28,6 +28,8 @@ export type ReplyIntent =
 
 export type SuggestedReply = { id: string; resident_text: string; visitor_text: string; intent: ReplyIntent };
 
+export type ProcessingStage = "heard" | "translating" | "checking";
+
 export type VisitorCard = {
   event_id: string;
   detected_language: string;
@@ -41,7 +43,20 @@ export type VisitorCard = {
   suggested_replies: SuggestedReply[];
   escalation: { required: boolean; reason: string };
   matched_expected_visit: { id: string; label: string } | null;
-  timings_ms: { audio: number; transcribe: number; perceive: number; policy: number; total: number };
+  timings_ms: { audio?: number; transcribe: number; perceive: number; policy: number; total: number };
+};
+
+export type DoorEvent = {
+  id: string;
+  ts: string;
+  status: "processing" | "ready" | "error";
+  stage?: ProcessingStage;
+  source: "ring_api" | "ring_simulator" | "test_harness" | "seeded";
+  card?: VisitorCard | null;
+  pipeline?: PipelineInfo | null;
+  replies?: ReplyRecord[];
+  escalations?: EscalationRecord[];
+  error?: string | null;
 };
 
 export type PipelineInfo = {

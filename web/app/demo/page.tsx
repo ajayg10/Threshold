@@ -1,261 +1,164 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { client } from "@/lib/api";
-import { useEvents, usePoll } from "@/lib/hooks";
-import { languageName, seconds, VISITOR_TYPE } from "@/lib/labels";
-import type { EventRecord, RingStatus, Scenario } from "@/lib/types";
+import { FIXTURE_SCENARIOS } from "@/lib/fixtures";
+import LatencyWaterfall from "@/components/LatencyWaterfall";
+import { useEvents } from "@/lib/hooks";
+import { DoorOpen, RotateCcw, Smartphone, Tablet, ExternalLink } from "lucide-react";
 
-const SCENARIO_DETAILS: Record<string, { icon: string; expected: string; tag: string }> = {
-  s1_delivery_hi: {
-    icon: "📦",
-    tag: "Low Risk Delivery",
-    expected: "Speaks Hindi · Low risk · Suggests: 'Leave it at door'",
-  },
-  s2_meter_pretext: {
-    icon: "⚡",
-    tag: "Pretext / High Risk",
-    expected: "Demands entry for meter · High risk · Escalates to family",
-  },
-  s3_neighbour: {
-    icon: "🏡",
-    tag: "Known Neighbour",
-    expected: "Priya returning dish · Low risk · Friendly greeting replies",
-  },
-  s4_ac_service: {
-    icon: "❄️",
-    tag: "Scheduled Service",
-    expected: "AC Technician · Verified against scheduled 4–5pm window",
-  },
-  s5_solar_sales: {
-    icon: "☀️",
-    tag: "Salesperson",
-    expected: "Solar sales pitch · Low risk · Suggests: 'Not interested'",
-  },
-  s6_smoke: {
-    icon: "🚨",
-    tag: "Emergency Alert",
-    expected: "Reports smoke in window · Emergency risk · Call 112 button",
-  },
-  s7_injection: {
-    icon: "🛡️",
-    tag: "Prompt Injection",
-    expected: "'Ignore previous instructions' · Flagged as manipulation",
-  },
-  s8_silent: {
-    icon: "🤫",
-    tag: "No Speech",
-    expected: "Nobody speaks · Suggests: 'Who is it?' · Low risk",
-  },
-};
+export default function DemoStagePage() {
+  const [activeScenario, setActiveScenario] = useState<string>("s1_delivery_hi");
+  const [triggering, setTriggering] = useState<string | null>(null);
+  const [lastTimings, setLastTimings] = useState<{
+    transcribe: number;
+    perceive: number;
+    policy: number;
+    total: number;
+  }>({
+    transcribe: 1420,
+    perceive: 1150,
+    policy: 680,
+    total: 3250,
+  });
 
-/** Hidden demo panel: seeded scenarios through the real pipeline, reset, per-stage latency, and
- * honest disclosure of what is seeded, simulated or cached. */
-export default function DemoPage() {
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [ring, setRing] = useState<RingStatus | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
-  const { data: health } = usePoll((signal) => client.health(signal), 10000);
   const { events, reload } = useEvents(1000);
+  const phoneIframeRef = useRef<HTMLIFrameElement>(null);
+  const doorIframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Sync timings from latest ready event
   useEffect(() => {
-    client.scenarios().then(setScenarios).catch((e: Error) => setMessage(e.message));
-    client.ringStatus().then(setRing).catch(() => setRing(null));
-  }, []);
-
-  async function trigger(s: Scenario) {
-    setBusy(s.id);
-    setMessage("");
-    try {
-      const r = await client.trigger(s.id);
-      setMessage(`✓ ${s.id}: ${r.result.status} (webhook accepted in ${r.ingest_ms} ms)`);
-    } catch (err) {
-      setMessage((err as Error).message);
-    } finally {
-      setBusy(null);
+    if (events.length > 0 && events[0].card?.timings_ms) {
+      const t = events[0].card.timings_ms;
+      setLastTimings({
+        transcribe: t.transcribe,
+        perceive: t.perceive,
+        policy: t.policy,
+        total: t.total,
+      });
     }
-  }
+  }, [events]);
 
-  async function reset() {
-    setBusy("reset");
+  const handleTrigger = async (scenarioId: string) => {
+    setActiveScenario(scenarioId);
+    setTriggering(scenarioId);
+    try {
+      await client.trigger(scenarioId);
+      reload();
+    } finally {
+      setTimeout(() => setTriggering(null), 500);
+    }
+  };
+
+  const handleReset = async () => {
+    setTriggering("reset");
     try {
       await client.reset();
       reload();
-      setMessage("✓ Reset complete: all past events cleared, seeded settings restored.");
-    } catch (err) {
-      setMessage((err as Error).message);
     } finally {
-      setBusy(null);
+      setTimeout(() => setTriggering(null), 500);
     }
-  }
+  };
 
   return (
-    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6" suppressHydrationWarning>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Interactive Demo & Simulator</h1>
-          <p className="mt-1 text-sm text-muted">
-            Trigger signed webhook visits through the full Amazon Transcribe & Bedrock AI pipeline.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="btn btn-danger text-sm" onClick={reset} disabled={busy !== null}>
-            {busy === "reset" ? "Resetting…" : "Reset Events"}
-          </button>
-          <Link href="/door" className="btn btn-primary text-sm" target="_blank">
-            Open Door Display ↗
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--frost)] text-[var(--dusk)] selection:bg-[var(--porch)]">
+      {/* 1. TOP CONTROL BAR */}
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--frame)]/40 bg-[var(--surface)] px-6">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--dusk)] text-white">
+              <DoorOpen className="h-4 w-4" strokeWidth={2.5} />
+            </span>
+            <span className="font-display text-2xl font-black tracking-tight">Threshold</span>
           </Link>
-        </div>
-      </div>
-
-      <section aria-label="System Pipeline Status" className="card mt-6 p-5 bg-surface shadow-sm">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted">Pipeline Provenance & Infrastructure</h2>
-        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-          <div className="rounded-lg bg-surface-hover/60 p-3 border border-line/60">
-            <span className="font-bold text-foreground">🔔 Event Intake:</span>
-            <p className="text-muted mt-0.5">Threshold HMAC-signed test harness exercises identical code to Ring webhooks.</p>
-          </div>
-          <div className="rounded-lg bg-surface-hover/60 p-3 border border-line/60">
-            <span className="font-bold text-foreground">🎙️ Speech Processing:</span>
-            <p className="text-muted mt-0.5">
-              {health?.precomputed_transcripts ? (
-                <span className="font-semibold text-warn">Cached Transcribe output is active.</span>
-              ) : (
-                "Live Amazon Transcribe & Bedrock Claude Haiku 4.5."
-              )}
-            </p>
-          </div>
-          <div className="rounded-lg bg-surface-hover/60 p-3 border border-line/60">
-            <span className="font-bold text-foreground">🗣️ Speech Synthesis:</span>
-            <p className="text-muted mt-0.5">Amazon Polly neural voices (Kajal for Hindi & Indian English) streamed to Door Display.</p>
-          </div>
-          <div className="rounded-lg bg-surface-hover/60 p-3 border border-line/60">
-            <span className="font-bold text-foreground">🚪 Ring Partner API:</span>
-            <p className="text-muted mt-0.5">
-              {ring === null
-                ? "Connecting…"
-                : ring.configured
-                  ? ring.linked
-                    ? `Linked (${ring.mode}), devices: ${ring.devices?.join(", ")}`
-                    : `Configured but unreachable: ${ring.error}`
-                  : "No physical Ring credentials; running with signed test harness."}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="scenarios-heading" className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 id="scenarios-heading" className="text-2xl font-bold tracking-tight">
-            Trigger Visitor Scenarios
-          </h2>
-          <span className="text-xs text-muted">Click any scenario to simulate a doorbell ring</span>
+          <span className="hidden lg:inline text-xs font-semibold text-[var(--frame-text)]">
+            Demo stage (16:9 recording mode)
+          </span>
         </div>
 
-        {message && (
-          <div role="status" aria-live="polite" className="mt-3 rounded-xl border border-accent/40 bg-accent/10 p-3 text-sm font-semibold text-accent">
-            {message}
-          </div>
-        )}
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {scenarios.map((s) => {
-            const meta = SCENARIO_DETAILS[s.id] || { icon: "🔔", tag: "Visitor", expected: s.label };
-            const isBusy = busy === s.id;
+        {/* Scenario Controls */}
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+          {FIXTURE_SCENARIOS.map((sc) => {
+            const isActive = activeScenario === sc.id;
+            const isBusy = triggering === sc.id;
             return (
               <button
-                key={s.id}
+                key={sc.id}
                 type="button"
-                className="btn flex flex-col items-start p-4 hover:border-accent text-left transition-all"
-                disabled={busy !== null}
-                onClick={() => trigger(s)}
+                onClick={() => handleTrigger(sc.id)}
+                disabled={triggering !== null}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition-all disabled:opacity-50 ${
+                  isActive
+                    ? "bg-[var(--dusk)] text-white shadow-xs"
+                    : "border border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--frame-text)] hover:text-[var(--dusk)] hover:border-[var(--dusk)]"
+                }`}
               >
-                <div className="flex w-full items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted">
-                    <span className="text-base">{meta.icon}</span> {meta.tag}
-                  </span>
-                  <span className="text-xs rounded-full bg-surface-hover px-2 py-0.5 border border-line text-muted">
-                    {languageName(s.language)}
-                  </span>
-                </div>
-                <span className="mt-1 text-lg font-bold leading-snug">
-                  {isBusy ? "Simulating Ringing…" : s.label}
-                </span>
-                <span className="mt-1 text-xs text-muted leading-relaxed">
-                  {meta.expected}
-                </span>
+                {isBusy ? "Triggering..." : sc.label}
               </button>
             );
           })}
-        </div>
-      </section>
 
-      <section aria-labelledby="latency-heading" className="mt-10">
-        <div className="flex items-center justify-between border-b border-line pb-3">
-          <h2 id="latency-heading" className="text-2xl font-bold tracking-tight">
-            Pipeline Latency Dashboard
-          </h2>
-          <span className="text-xs text-muted">Target: &lt; 4 seconds after visitor speech</span>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={triggering !== null}
+            title="Reset events and state"
+            className="inline-flex items-center gap-1 rounded-full border border-[var(--frame)]/40 bg-[var(--surface)] px-3 py-1 text-xs font-bold text-[var(--alarm)] hover:bg-[var(--alarm-bg)]"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Reset</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 2. DUAL IFRAME STAGE (Phone + Door Tablet) */}
+      <main className="flex flex-1 items-center justify-center gap-8 overflow-hidden p-6">
+        {/* LEFT: RESIDENT PHONE (390x844 aspect frame) */}
+        <div className="flex h-full max-h-[820px] w-[390px] flex-col rounded-[24px] border-4 border-[var(--frame)]/50 bg-[var(--surface)] shadow-md overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--frame)]/25 bg-[var(--surface)] px-4 py-2 text-xs font-bold text-[var(--frame-text)]">
+            <div className="flex items-center gap-1.5">
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>Resident phone</span>
+            </div>
+            <Link href="/" target="_blank" className="hover:text-[var(--dusk)]">
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+          <iframe
+            ref={phoneIframeRef}
+            src="/"
+            title="Resident phone view"
+            className="flex-1 w-full border-0 bg-[var(--frost)]"
+          />
         </div>
 
-        <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-surface shadow-sm">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Pipeline timings for recent visits</caption>
-            <thead>
-              <tr className="border-b border-line bg-surface-hover/70 text-xs font-bold uppercase tracking-wider text-muted">
-                <th scope="col" className="py-3 px-4">Visitor</th>
-                <th scope="col" className="py-3 px-3">Clip</th>
-                <th scope="col" className="py-3 px-3">Transcribe</th>
-                <th scope="col" className="py-3 px-3">Understand</th>
-                <th scope="col" className="py-3 px-3">Policy Check</th>
-                <th scope="col" className="py-3 px-4 font-bold text-foreground">Total Turnaround</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line/60">
-              {events.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted">
-                    No recent pipeline events yet. Click a scenario above to measure live latency.
-                  </td>
-                </tr>
-              ) : (
-                events.slice(0, 8).map((e) => (
-                  <LatencyRow key={e.event.id} record={e} />
-                ))
-              )}
-            </tbody>
-          </table>
+        {/* RIGHT: DOOR DISPLAY TABLET (16:10 aspect frame) */}
+        <div className="flex h-full max-h-[820px] flex-1 max-w-[850px] flex-col rounded-[24px] border-4 border-[var(--frame)]/50 bg-[var(--surface)] shadow-md overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--frame)]/25 bg-[var(--surface)] px-4 py-2 text-xs font-bold text-[var(--frame-text)]">
+            <div className="flex items-center gap-1.5">
+              <Tablet className="h-3.5 w-3.5" />
+              <span>Door display (Visitor-facing tablet)</span>
+            </div>
+            <Link href="/door" target="_blank" className="hover:text-[var(--dusk)]">
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+          <iframe
+            ref={doorIframeRef}
+            src="/door"
+            title="Door display tablet view"
+            className="flex-1 w-full border-0 bg-[var(--frost)]"
+          />
         </div>
-      </section>
-    </main>
-  );
-}
+      </main>
 
-function LatencyRow({ record }: { record: EventRecord }) {
-  const c = record.card;
-  const t = c?.timings_ms;
-  const pending = record.pipeline?.policy === "pending";
-  return (
-    <tr className="align-middle hover:bg-surface-hover/40 transition-colors">
-      <th scope="row" className="py-3 px-4 font-medium">
-        <Link href={`/event?id=${encodeURIComponent(record.event.id)}`} className="text-accent hover:underline font-bold">
-          {c ? VISITOR_TYPE[c.visitor_type].label : record.status}
-        </Link>
-        {record.pipeline && (
-          <span className="block text-xs text-muted">
-            {record.pipeline.transcript_source} · agent: {record.pipeline.policy}
-          </span>
-        )}
-      </th>
-      <td className="py-3 px-3 font-mono">{t ? seconds(t.audio) : "…"}</td>
-      <td className="py-3 px-3 font-mono">{t ? seconds(t.transcribe) : "…"}</td>
-      <td className="py-3 px-3 font-mono">{t ? seconds(t.perceive) : "…"}</td>
-      <td className="py-3 px-3 font-mono">{t ? (pending ? "⏳ running…" : seconds(t.policy)) : "…"}</td>
-      <td className="py-3 px-4 font-mono font-bold text-ok">
-        {t ? seconds(Math.max(0, t.total - t.audio)) : "…"}
-      </td>
-    </tr>
+      {/* 3. BOTTOM PIPELINE SPEED & WATERFALL BAR */}
+      <footer className="h-16 shrink-0 border-t border-[var(--frame)]/40 bg-[var(--surface)] px-6 flex items-center justify-between">
+        <div className="w-full max-w-4xl mx-auto">
+          <LatencyWaterfall timings={lastTimings} />
+        </div>
+      </footer>
+    </div>
   );
 }

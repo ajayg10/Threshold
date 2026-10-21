@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import TimelineRow from "@/components/TimelineRow";
 import { useEvents } from "@/lib/hooks";
-import { RISK, VISITOR_TYPE } from "@/lib/labels";
-import type { Level } from "@/lib/types";
+import { Level } from "@/lib/types";
+import { Search } from "lucide-react";
 
-/** Past visits and what happened (replies sent, contacts alerted). Kept for the retention period only. */
 export default function HistoryPage() {
   const { events, loaded, error } = useEvents(5000);
   const [filter, setFilter] = useState<"all" | Level | "emergency">("all");
@@ -20,139 +19,102 @@ export default function HistoryPage() {
     }
     if (!query.trim()) return true;
     const q = query.toLowerCase();
-    const summary = e.card?.summary.toLowerCase() ?? "";
-    const transcript = e.card?.transcript.toLowerCase() ?? "";
+    const summary = e.card?.summary.toLowerCase() || "";
+    const transcript = e.card?.transcript.toLowerCase() || "";
     return summary.includes(q) || transcript.includes(q);
   });
 
   return (
-    <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6" suppressHydrationWarning>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line pb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Visit History</h1>
-          <p className="mt-1 text-sm text-muted">
-            Transcripts kept strictly for retention period. Audio is never stored.
-          </p>
-        </div>
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-surface border border-line text-muted">
-          Auto-purged after retention
-        </span>
+    <div className="mx-auto w-full max-w-2xl text-[var(--dusk)]">
+      {/* Page Header */}
+      <div className="border-b border-[var(--frame)]/30 pb-4">
+        <h1 className="font-display text-2xl md:text-3xl font-black tracking-tight">
+          Visit history
+        </h1>
+        <p className="mt-1 text-sm text-[var(--frame-text)]">
+          Continuous record of visits at your door. Transcripts kept according to retention policy.
+        </p>
       </div>
 
-      {error && !events.length && (
-        <div role="alert" className="mt-4 rounded-xl border border-danger/40 bg-danger-bg p-4 font-semibold text-danger">
-          ⚠️ {error.message}
-        </div>
-      )}
-
+      {/* Filter Chips & Search Bar */}
       {events.length > 0 && (
-        <div className="mt-6 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              className={`btn text-xs py-1.5 px-3 min-h-[2.25rem] ${filter === "all" ? "btn-primary" : "bg-surface"}`}
-              onClick={() => setFilter("all")}
-            >
-              All ({events.length})
-            </button>
-            <button
-              type="button"
-              className={`btn text-xs py-1.5 px-3 min-h-[2.25rem] ${filter === "low" ? "btn-primary" : "bg-surface"}`}
-              onClick={() => setFilter("low")}
-            >
-              🟢 Safe / Low Risk
-            </button>
-            <button
-              type="button"
-              className={`btn text-xs py-1.5 px-3 min-h-[2.25rem] ${filter === "high" ? "btn-danger" : "bg-surface"}`}
-              onClick={() => setFilter("high")}
-            >
-              🔴 High Risk / Pretext
-            </button>
-            <button
-              type="button"
-              className={`btn text-xs py-1.5 px-3 min-h-[2.25rem] ${filter === "emergency" ? "btn-danger" : "bg-surface"}`}
-              onClick={() => setFilter("emergency")}
-            >
-              🚨 Emergency
-            </button>
-          </div>
+        <div className="mt-6 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter visits by risk">
+              {[
+                { id: "all", label: "All visits" },
+                { id: "low", label: "Low risk" },
+                { id: "medium", label: "Caution" },
+                { id: "high", label: "High risk" },
+                { id: "emergency", label: "Emergency" },
+              ].map((tab) => {
+                const active = filter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFilter(tab.id as any)}
+                    className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                      active
+                        ? "bg-[var(--dusk)] text-white"
+                        : "border border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--frame-text)] hover:text-[var(--dusk)]"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
 
-          <div className="sm:w-64">
-            <input
-              type="search"
-              placeholder="Search past visits…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="field text-sm min-h-[2.25rem] py-1"
-            />
+            <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[var(--frame-text)]" />
+              <input
+                type="search"
+                placeholder="Search visits..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full rounded-full border border-[var(--frame)]/40 bg-[var(--surface)] py-1.5 pl-8 pr-3 text-xs text-[var(--dusk)] focus:border-[var(--dusk)]"
+              />
+            </div>
           </div>
         </div>
       )}
 
+      {/* Error state */}
+      {error && !events.length && (
+        <div role="alert" className="mt-6 rounded-[14px] bg-[var(--alarm-bg)] p-4 text-sm font-semibold text-[var(--alarm)]">
+          Could not load visit history: {error.message}
+        </div>
+      )}
+
+      {/* Empty State */}
       {loaded && events.length === 0 && (
-        <div className="card mt-8 p-12 text-center">
-          <p className="text-2xl font-bold">No visits recorded</p>
-          <p className="mt-2 text-base text-muted">When visitors ring the doorbell, their visit summary will be preserved here.</p>
-          <Link href="/demo" className="btn btn-primary mt-6">
-            ▶ Test with a demo visitor
-          </Link>
+        <div className="my-16 text-center">
+          <p className="text-xl font-bold font-display">No visits recorded yet</p>
+          <p className="mt-2 text-sm text-[var(--frame-text)]">
+            When someone rings your doorbell or approaches the threshold, the interaction will be logged here.
+          </p>
         </div>
       )}
 
       {events.length > 0 && filtered.length === 0 && (
-        <p className="mt-8 text-center text-muted">No visits match your filter.</p>
+        <p className="my-12 text-center text-sm text-[var(--frame-text)]">
+          No visits match your filter criteria.
+        </p>
       )}
 
-      <ol className="mt-4 space-y-3">
-        {filtered.map((e) => {
-          const outcome = [
-            e.replies.length ? `💬 ${e.replies.length} repl${e.replies.length === 1 ? "y" : "ies"} sent` : "No reply",
-            ...e.escalations.map((x) => `👪 ${x.contact_name} alerted`),
-          ].join(" · ");
-
-          return (
-            <li key={e.event.id}>
-              <Link
-                href={`/event?id=${encodeURIComponent(e.event.id)}`}
-                className="card block p-4 hover:border-accent transition-all hover:shadow-md"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl" aria-hidden="true">
-                      {e.card ? VISITOR_TYPE[e.card.visitor_type].icon : "🔔"}
-                    </span>
-                    <span className="font-bold text-lg">
-                      {e.card ? VISITOR_TYPE[e.card.visitor_type].label : e.status}
-                    </span>
-                    {e.card && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
-                        e.card.risk_level === "high" 
-                          ? "bg-danger-bg text-danger border-danger/40" 
-                          : e.card.risk_level === "medium"
-                          ? "bg-warn-bg text-warn border-warn/40"
-                          : "bg-ok-bg text-ok border-ok/40"
-                      }`}>
-                        {RISK[e.card.risk_level].icon} {RISK[e.card.risk_level].label}
-                      </span>
-                    )}
-                  </div>
-                  <time dateTime={e.created_at} className="text-xs text-muted font-medium">
-                    {new Date(e.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-                  </time>
-                </div>
-
-                {e.card && <p className="mt-2 text-base font-medium">{e.card.summary}</p>}
-
-                <div className="mt-3 flex items-center justify-between text-xs text-muted border-t border-line/40 pt-2">
-                  <span>{outcome}</span>
-                  <span className="text-accent font-semibold">View details →</span>
-                </div>
-              </Link>
-            </li>
-          );
-        })}
-      </ol>
-    </main>
+      {/* Continuous Chronological Timeline List */}
+      {filtered.length > 0 && (
+        <ol className="mt-8 space-y-0" aria-label="Timeline of past visits">
+          {filtered.map((record, index) => (
+            <TimelineRow
+              key={record.event.id}
+              record={record}
+              isLast={index === filtered.length - 1}
+            />
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
