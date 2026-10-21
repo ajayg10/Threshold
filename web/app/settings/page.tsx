@@ -142,16 +142,14 @@ export default function SettingsPage() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-1.5 rounded-[12px] px-3.5 py-2 text-xs font-bold transition-colors ${
-                active
-                  ? "bg-[var(--dusk)] text-white"
-                  : "border border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--frame-text)] hover:text-[var(--dusk)]"
+              className={`inline-flex items-center gap-1.5 rounded-[12px] px-3.5 py-2 text-xs font-bold transition-all ${
+                active ? "btn-selected" : "btn-unselected"
               }`}
             >
               <Icon className="h-3.5 w-3.5" strokeWidth={2} />
               <span>{tab.label}</span>
               {typeof tab.count === "number" && (
-                <span className={`rounded-full px-1.5 text-[10px] ${active ? "bg-white/20 text-white" : "bg-[var(--frame)]/15 text-[var(--frame-text)]"}`}>
+                <span className={`rounded-full px-1.5 text-[10px] font-bold ${active ? "bg-black/20 text-current" : "bg-[var(--frame)]/15 text-[var(--frame-text)]"}`}>
                   {tab.count}
                 </span>
               )}
@@ -175,10 +173,8 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => handleThemeChange("day")}
-                  className={`flex items-center justify-center gap-2 rounded-[14px] border-2 p-3 text-sm font-bold transition-colors ${
-                    themeMode === "day"
-                      ? "border-[var(--dusk)] bg-[var(--dusk)] text-white"
-                      : "border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--dusk)] hover:border-[var(--dusk)]"
+                  className={`flex items-center justify-center gap-2 rounded-[14px] p-3 text-sm font-bold transition-all ${
+                    themeMode === "day" ? "btn-selected" : "btn-unselected"
                   }`}
                 >
                   <Sun className="h-4 w-4" />
@@ -187,10 +183,8 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => handleThemeChange("night")}
-                  className={`flex items-center justify-center gap-2 rounded-[14px] border-2 p-3 text-sm font-bold transition-colors ${
-                    themeMode === "night"
-                      ? "border-[var(--dusk)] bg-[var(--dusk)] text-white"
-                      : "border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--dusk)] hover:border-[var(--dusk)]"
+                  className={`flex items-center justify-center gap-2 rounded-[14px] p-3 text-sm font-bold transition-all ${
+                    themeMode === "night" ? "btn-selected" : "btn-unselected"
                   }`}
                 >
                   <Moon className="h-4 w-4" />
@@ -199,10 +193,8 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => handleThemeChange("auto")}
-                  className={`flex items-center justify-center gap-2 rounded-[14px] border-2 p-3 text-sm font-bold transition-colors ${
-                    themeMode === "auto"
-                      ? "border-[var(--dusk)] bg-[var(--dusk)] text-white"
-                      : "border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--dusk)] hover:border-[var(--dusk)]"
+                  className={`flex items-center justify-center gap-2 rounded-[14px] p-3 text-sm font-bold transition-all ${
+                    themeMode === "auto" ? "btn-selected" : "btn-unselected"
                   }`}
                 >
                   <Clock className="h-4 w-4" />
@@ -460,7 +452,7 @@ export default function SettingsPage() {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex min-h-[3.5rem] w-full items-center justify-center gap-2 rounded-[14px] bg-[var(--dusk)] px-6 py-3 font-bold text-white hover:opacity-95 disabled:opacity-50"
+            className="inline-flex min-h-[3.5rem] w-full items-center justify-center gap-2 rounded-[14px] btn-primary-action px-6 py-3 font-bold disabled:opacity-50"
           >
             <Check className="h-4 w-4" />
             <span>{saving ? "Saving..." : "Save settings"}</span>

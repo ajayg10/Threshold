@@ -24,7 +24,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col bg-[var(--frost)] text-[var(--dusk)]">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-[10px] focus:bg-[var(--dusk)] focus:px-4 focus:py-2 focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-[10px] focus:bg-[var(--btn-primary-bg)] focus:px-4 focus:py-2 focus:text-[var(--btn-primary-text)] shadow-md"
       >
         Skip to main content
       </a>
@@ -37,7 +37,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         >
           {/* Brand Wordmark */}
           <Link href="/" className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-[var(--dusk)]">
-            <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--dusk)] text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--btn-primary-bg)] text-[var(--btn-primary-text)] shadow-xs">
               <DoorOpen className="h-4 w-4" strokeWidth={2.5} />
             </span>
             <span className="font-display text-2xl font-black">Threshold</span>
@@ -53,10 +53,8 @@ export default function Shell({ children }: { children: ReactNode }) {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-[2.5rem] items-center gap-1.5 rounded-[12px] px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    active
-                      ? "bg-[var(--frost)] text-[var(--dusk)] border border-[var(--frame)]/40"
-                      : "text-[var(--frame-text)] hover:text-[var(--dusk)] hover:bg-[var(--frost)]/60"
+                  className={`inline-flex min-h-[2.5rem] items-center gap-1.5 rounded-[12px] px-3.5 py-1.5 text-sm font-bold transition-all ${
+                    active ? "btn-selected" : "text-[var(--frame-text)] hover:text-[var(--dusk)] hover:bg-[var(--surface)]"
                   }`}
                 >
                   <Icon className="h-4 w-4" strokeWidth={2} />

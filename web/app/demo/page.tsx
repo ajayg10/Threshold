@@ -67,7 +67,7 @@ export default function DemoStagePage() {
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--frame)]/40 bg-[var(--surface)] px-6">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--dusk)] text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--btn-primary-bg)] text-[var(--btn-primary-text)] shadow-xs">
               <DoorOpen className="h-4 w-4" strokeWidth={2.5} />
             </span>
             <span className="font-display text-2xl font-black tracking-tight">Threshold</span>
@@ -88,10 +88,8 @@ export default function DemoStagePage() {
                 type="button"
                 onClick={() => handleTrigger(sc.id)}
                 disabled={triggering !== null}
-                className={`rounded-full px-3 py-1 text-xs font-bold transition-all disabled:opacity-50 ${
-                  isActive
-                    ? "bg-[var(--dusk)] text-white shadow-xs"
-                    : "border border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--frame-text)] hover:text-[var(--dusk)] hover:border-[var(--dusk)]"
+                className={`rounded-full px-3.5 py-1 text-xs font-bold transition-all disabled:opacity-50 ${
+                  isActive ? "btn-selected" : "btn-unselected"
                 }`}
               >
                 {isBusy ? "Triggering..." : sc.label}

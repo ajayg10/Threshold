@@ -67,7 +67,7 @@ export default function VisitorCardView({
             <button
               onClick={onRetry}
               type="button"
-              className="mt-6 inline-flex min-h-[3rem] items-center gap-2 rounded-[14px] border-2 border-[var(--dusk)] bg-[var(--dusk)] px-5 py-2.5 font-bold text-white hover:opacity-90"
+              className="mt-6 inline-flex min-h-[3rem] items-center gap-2 rounded-[14px] btn-primary-action px-5 py-2.5 font-bold"
             >
               <RefreshCw className="h-4 w-4" />
               <span>Retry connection</span>
@@ -119,7 +119,7 @@ export default function VisitorCardView({
             <button
               onClick={() => onReply({ text: "Could you please repeat what you said?" })}
               type="button"
-              className="inline-flex min-h-[3.5rem] items-center gap-2 rounded-[14px] bg-[var(--dusk)] px-6 py-3 font-bold text-white hover:opacity-90"
+              className="inline-flex min-h-[3.5rem] items-center gap-2 rounded-[14px] btn-primary-action px-6 py-3 font-bold"
             >
               Ask them to repeat on door
             </button>
@@ -292,7 +292,7 @@ export default function VisitorCardView({
 
       {/* Reply confirmation banner when already answered */}
       {recentReply && (
-        <div className="mt-4 flex items-center justify-between rounded-[12px] border border-[var(--safe-border)] bg-[var(--safe-bg)] p-3 text-sm text-[var(--safe)]">
+        <div className="mt-4 flex items-center justify-between rounded-[12px] border border-[var(--reply-selected-border)] bg-[var(--reply-selected-bg)] p-3 text-sm text-[var(--reply-selected-text)]">
           <div>
             <span className="font-bold">Showing on door display: </span>
             <span>“{recentReply.visitor_text}”</span>
@@ -344,7 +344,7 @@ export default function VisitorCardView({
           <button
             type="submit"
             disabled={!customText.trim() || submitting}
-            className="inline-flex min-h-[3.5rem] w-full sm:w-auto shrink-0 items-center justify-center gap-2 rounded-[14px] bg-[var(--dusk)] px-5 py-3 font-bold text-white hover:opacity-95 disabled:opacity-50"
+            className="inline-flex min-h-[3.5rem] w-full sm:w-auto shrink-0 items-center justify-center gap-2 rounded-[14px] btn-primary-action px-5 py-3 font-bold disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
             <span>Show on door display</span>

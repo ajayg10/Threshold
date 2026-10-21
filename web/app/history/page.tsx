@@ -54,10 +54,8 @@ export default function HistoryPage() {
                     key={tab.id}
                     type="button"
                     onClick={() => setFilter(tab.id as any)}
-                    className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
-                      active
-                        ? "bg-[var(--dusk)] text-white"
-                        : "border border-[var(--frame)]/40 bg-[var(--surface)] text-[var(--frame-text)] hover:text-[var(--dusk)]"
+                    className={`rounded-full px-3.5 py-1 text-xs font-bold transition-all ${
+                      active ? "btn-selected" : "btn-unselected"
                     }`}
                   >
                     {tab.label}

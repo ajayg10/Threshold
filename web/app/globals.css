@@ -30,6 +30,22 @@
 
   --focus-outline: #162B3D;
   --focus-halo: #F5B63D;
+
+  /* SELECTED & ACTIVE BUTTONS / PILLS */
+  --btn-selected-bg: #162B3D;
+  --btn-selected-text: #FFFFFF;
+  --btn-selected-border: #162B3D;
+
+  /* PRIMARY ACTION BUTTONS */
+  --btn-primary-bg: #162B3D;
+  --btn-primary-text: #FFFFFF;
+
+  /* SELECTED REPLY CARD */
+  --reply-selected-bg: #E8F4F1;
+  --reply-selected-border: #126E5E;
+  --reply-selected-text: #162B3D;
+  --reply-badge-bg: #126E5E;
+  --reply-badge-text: #FFFFFF;
 }
 
 [data-theme="night"] {
@@ -55,6 +71,22 @@
 
   --focus-outline: #EAF0F4;
   --focus-halo: #F5B63D;
+
+  /* SELECTED & ACTIVE BUTTONS / PILLS: Porch amber with dark dusk text for bold 8.07:1 AAA contrast */
+  --btn-selected-bg: #F5B63D;
+  --btn-selected-text: #162B3D;
+  --btn-selected-border: #F5B63D;
+
+  /* PRIMARY ACTION BUTTONS */
+  --btn-primary-bg: #F5B63D;
+  --btn-primary-text: #162B3D;
+
+  /* SELECTED REPLY CARD */
+  --reply-selected-bg: #0C2B22;
+  --reply-selected-border: #34D399;
+  --reply-selected-text: #EAF0F4;
+  --reply-badge-bg: #34D399;
+  --reply-badge-text: #0E1B27;
 }
 
 @theme inline {
@@ -100,6 +132,36 @@ body {
   outline: 2px solid var(--focus-outline) !important;
   box-shadow: 0 0 0 4px var(--focus-halo) !important;
   outline-offset: 2px !important;
+}
+
+/* HIGH-CONTRAST INTERACTIVE BUTTON STATES (Strict WCAG AA/AAA) */
+.btn-selected {
+  background-color: var(--btn-selected-bg) !important;
+  color: var(--btn-selected-text) !important;
+  border: 2px solid var(--btn-selected-border) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+.btn-unselected {
+  background-color: var(--surface) !important;
+  color: var(--dusk) !important;
+  border: 2px solid var(--frame) !important;
+}
+
+.btn-unselected:hover {
+  border-color: var(--dusk) !important;
+  background-color: var(--frost) !important;
+}
+
+.btn-primary-action {
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+  border: 2px solid var(--btn-primary-bg) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+.btn-primary-action:hover:not(:disabled) {
+  opacity: 0.92 !important;
 }
 
 /* THE SEAM: The memorable boundary between outside and inside */
