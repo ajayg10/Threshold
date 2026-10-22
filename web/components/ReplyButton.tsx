@@ -6,6 +6,7 @@ interface ReplyButtonProps {
   id: string;
   residentText: string;
   visitorText: string;
+  shortcut?: string | number;
   isSent?: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -15,6 +16,7 @@ export default function ReplyButton({
   id,
   residentText,
   visitorText,
+  shortcut,
   isSent = false,
   disabled = false,
   onClick,
@@ -35,11 +37,20 @@ export default function ReplyButton({
         <span className="text-base font-bold leading-tight">
           {residentText}
         </span>
-        {isSent && (
+        {isSent ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--reply-badge-bg)] px-2.5 py-1 text-xs font-bold text-[var(--reply-badge-text)] shadow-xs">
             <Check className="h-3.5 w-3.5" strokeWidth={3} />
             Showing on door display
           </span>
+        ) : (
+          shortcut && (
+            <kbd
+              aria-label={`Shortcut key ${shortcut}`}
+              className="hidden sm:inline-flex items-center justify-center h-5 min-w-[1.25rem] px-1.5 rounded text-[11px] font-mono font-bold bg-[var(--frame)]/15 text-[var(--dusk)] border border-[var(--frame)]/40 shadow-2xs group-hover:border-[var(--dusk)] transition-colors"
+            >
+              {shortcut}
+            </kbd>
+          )
         )}
       </div>
 

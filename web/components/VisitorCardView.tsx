@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { EventRecord, TrustedContact } from "@/lib/types";
 import { getVisitorTypeLabel } from "@/lib/copy";
 import StatusRow from "./StatusRow";
@@ -204,6 +204,34 @@ export default function VisitorCardView({
     }
   };
 
+  // Keyboard navigation: press 1-4 to instantly choose a quick reply
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!card?.suggested_replies || submitting) return;
+
+      const num = parseInt(e.key, 10);
+      if (!isNaN(num) && num >= 1 && num <= card.suggested_replies.length) {
+        const selected = card.suggested_replies[num - 1];
+        if (selected) {
+          e.preventDefault();
+          handleSelectSuggested(selected.id);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [card?.suggested_replies, submitting]);
+
   const handleSendCustom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customText.trim() || submitting) return;
@@ -309,14 +337,20 @@ export default function VisitorCardView({
 
       {/* 6. Suggested Replies: 3 large buttons (min 56px) */}
       <section aria-label="Suggested quick replies" className="mt-6 space-y-2.5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--frame-text)]">
-          Choose a reply to show at the door
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--frame-text)]">
+            Choose a reply to show at the door
+          </h3>
+          <span className="hidden sm:inline-block text-[11px] font-medium text-[var(--frame-text)] opacity-75">
+            Keys 1-{card.suggested_replies.length}
+          </span>
+        </div>
         <div className="space-y-2.5">
-          {card.suggested_replies.map((reply) => (
+          {card.suggested_replies.map((reply, idx) => (
             <ReplyButton
               key={reply.id}
               id={reply.id}
+              shortcut={idx + 1}
               residentText={reply.resident_text}
               visitorText={reply.visitor_text}
               isSent={sentReplyId === reply.id || recentReply?.suggestion_id === reply.id}
