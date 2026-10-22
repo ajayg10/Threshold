@@ -5,6 +5,8 @@ def test_health_is_public(client):
     assert body["status"] == "ok"
     assert body["store"] == "memory"
     assert body["ring_api_configured"] is False
+    assert body["escalation_configured"] is False
+    assert "server_time" in body
 
 
 def test_routes_live_under_api_prefix(client):

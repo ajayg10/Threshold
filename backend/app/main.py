@@ -54,6 +54,8 @@ def health() -> dict:
         "store": get_store().name,
         "ring_api_configured": bool(settings.ring_access_token or settings.ring_refresh_token),
         "precomputed_transcripts": settings.precomputed_transcripts,
+        "escalation_configured": bool(settings.escalation_topic_arn),
+        "server_time": utcnow(),
     }
 
 
