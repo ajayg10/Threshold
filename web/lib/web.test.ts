@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { doorMode, REPLY_WINDOW_MS, WAIT_WINDOW_MS } from "./door";
 import { latestUpdate, mergeEvents } from "./hooks";
-import { FLAG, RISK, languageName, provenanceBadges, sameLanguage, timeAgo } from "./labels";
+import { FLAG, INTENT, RISK, VISITOR_TYPE, languageName, provenanceBadges, sameLanguage, seconds, timeAgo } from "./labels";
 import type { DoorFeed, EventRecord } from "./types";
 
 const NOW = Date.parse("2026-10-19T12:00:00Z");
@@ -86,6 +86,41 @@ describe("door display", () => {
 describe("timeAgo", () => {
   it("is human readable", () => {
     expect(timeAgo(ago(2000), NOW)).toBe("just now");
+    expect(timeAgo(ago(35_000), NOW)).toBe("35 s ago");
     expect(timeAgo(ago(90_000), NOW)).toBe("2 min ago");
+    expect(timeAgo(ago(7200_000), NOW)).toBe("2 h ago");
+  });
+});
+
+describe("visitor types and reply intents", () => {
+  it("every visitor type has an icon and descriptive label", () => {
+    expect(Object.keys(VISITOR_TYPE).length).toBe(7);
+    expect(VISITOR_TYPE.delivery.label).toBe("Delivery");
+    expect(VISITOR_TYPE.emergency.label).toBe("Emergency reported");
+    expect(VISITOR_TYPE.service.icon).toBe("🔧");
+  });
+
+  it("every reply intent has a concise label", () => {
+    expect(Object.keys(INTENT).length).toBe(7);
+    expect(INTENT.accept_delivery).toBe("Parcel");
+    expect(INTENT.emergency_help).toBe("Emergency");
+    expect(INTENT.ask_id).toBe("Ask for ID");
+  });
+});
+
+describe("seconds formatting", () => {
+  it("formats milliseconds to one decimal place in seconds", () => {
+    expect(seconds(1200)).toBe("1.2 s");
+    expect(seconds(500)).toBe("0.5 s");
+    expect(seconds(0)).toBe("0.0 s");
+  });
+});
+
+describe("provenanceBadges with ring_api", () => {
+  it("labels ring source correctly", () => {
+    const r = record("e-ring", ago(100), ago(100), {
+      event: { id: "e-ring", device_id: "d", type: "ding", ts: ago(100), source: "ring_api", media: { audio_url: null, snapshot_url: null } },
+    });
+    expect(provenanceBadges(r)).toEqual(["Ring"]);
   });
 });
