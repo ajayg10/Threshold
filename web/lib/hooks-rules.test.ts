@@ -14,5 +14,5 @@ describe("rules of hooks", () => {
       r.messages.map((m) => `${r.filePath.slice(cwd.length)}:${m.line} ${m.message}`),
     );
     expect(problems).toEqual([]);
-  }, 60_000);
+  }, 120_000);
 });

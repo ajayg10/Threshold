@@ -175,3 +175,11 @@ Entries are added as friction happens. Severity is low, medium, or high.
 - **Severity:** medium. The timeout looks like a hard bound, but it isn't one.
 - **Workaround:** `BedrockModel(boto_client_config=Config(connect_timeout=3, read_timeout=8, retries={"max_attempts": 2, "mode": "standard"}))`. Each agent call is short, so 8 s is generous. A rerun of four agent cases finished in 5.6–7.8 s. Our guardrailed card is published before the agent runs, so the resident is never blocked either way.
 - **Suggestion:** Document that `cancel_signal` is cooperative and doesn't interrupt model calls. Either let it abort the in-flight request, or default to a read timeout closer to typical agent turns and mention `boto_client_config` next to `cancel_signal`.
+
+## F20: Next.js 16 static export writes segment prefetch files under a different name than the router requests
+- **Tool:** Next.js 16.4.2 (`output: "export"`), served from S3 through CloudFront
+- **Task:** Serve the exported app with no 4xx errors.
+- **Actual:** On every page load, the client router prefetches `/<route>/__next.<route>.__PAGE__.txt`, but the export writes `/<route>/__next.<route>/__PAGE__.txt`. The root route matches (`/__next.__PAGE__.txt`), but nested routes don't. S3 with OAC answers missing keys with 403, so DevTools showed five red errors per page, and client-side navigation fell back to full page loads.
+- **Severity:** low. Pages still work, but it looks broken to anyone with DevTools open.
+- **Workaround:** `scripts/tasks.py build_web` copies each `__next.<route>/__PAGE__.txt` to `__next.<route>.__PAGE__.txt` after `next build`.
+- **Suggestion:** Not an Amazon tool. Reported here because it surfaced on S3/CloudFront, where missing objects return 403 rather than 404, which hides the real cause.
