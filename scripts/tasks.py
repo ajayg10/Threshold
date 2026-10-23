@@ -168,6 +168,11 @@ def build_lambda() -> None:
 
 def build_web(api_base: str) -> None:
     run([tool("npm"), "run", "build"], cwd=WEB, env={**os.environ, "NEXT_PUBLIC_API_BASE": api_base})
+    # Next 16's router prefetches /<route>/__next.<route>.__PAGE__.txt, but the static export writes
+    # /<route>/__next.<route>/__PAGE__.txt. S3 answers the missing key with 403 on every page load
+    # (friction log F20), so publish each segment file under both names.
+    for page in (WEB / "out").glob("*/__next.*/__PAGE__.txt"):
+        shutil.copyfile(page, page.parent.with_name(f"{page.parent.name}.__PAGE__.txt"))
 
 
 def task_build(_: argparse.Namespace) -> None:
@@ -190,9 +195,13 @@ def task_outputs(_: argparse.Namespace) -> None:
         print(f"{key:16} {value}")
 
 
-def task_deploy(_: argparse.Namespace) -> None:
+def task_deploy(args: argparse.Namespace) -> None:
     env = load_env()
     name, region = stack(env)
+    if args.web_only:  # front-end change only: no Lambda bundle, no CloudFormation update
+        build_web("/api")
+        publish_site(env)
+        return
     params = [
         f"DemoToken={require(env, 'DEMO_TOKEN')}",
         f"HarnessHmacKey={require(env, 'HARNESS_HMAC_KEY')}",
@@ -203,7 +212,7 @@ def task_deploy(_: argparse.Namespace) -> None:
         # Ring values are sent as "none" (treated as unset by app/config.py).
         *(f"{param}={env.get(var) or 'none'}" for param, var in RING_PARAMS.items()),
     ]
-    task_build(_)
+    task_build(args)
     run(
         [
             tool("sam"), "deploy",
@@ -220,7 +229,12 @@ def task_deploy(_: argparse.Namespace) -> None:
         cwd=ROOT,
         env={**os.environ, "SAM_CLI_TELEMETRY": "0"},
     )
+    publish_site(env)
 
+
+def publish_site(env: dict[str, str]) -> None:
+    """Upload web/out to the site bucket, invalidate CloudFront, and smoke-test the API."""
+    _, region = stack(env)
     out = stack_outputs(env)
     bucket, dist = f"s3://{out['SiteBucketName']}", out["DistributionId"]
     aws = tool("aws")
@@ -346,6 +360,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("task", choices=TASKS)
     parser.add_argument("--yes", action="store_true", help="confirm destructive tasks (destroy)")
+    parser.add_argument("--web-only", action="store_true", help="deploy: rebuild and upload only the website")
     demo = parser.add_argument_group("demo")
     demo.add_argument("--deployed", action="store_true", help="target this stack's site instead of the local backend")
     demo.add_argument("--url", help="target another deployed site, e.g. https://dxxxx.cloudfront.net")

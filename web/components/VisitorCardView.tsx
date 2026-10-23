@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useEffectEvent } from "react";
 import { EventRecord, TrustedContact } from "@/lib/types";
 import { getVisitorTypeLabel } from "@/lib/copy";
 import StatusRow from "./StatusRow";
@@ -47,6 +47,45 @@ export default function VisitorCardView({
   const [sentReplyId, setSentReplyId] = useState<string | null>(null);
   const [escalating, setEscalating] = useState(false);
   const [escalated, setEscalated] = useState(false);
+
+  // Hooks must run on every render, before the early returns below: a hook that only runs in the
+  // ready state crashes the page (React #310) the moment a visit goes from processing to ready.
+  const readyReplies =
+    !isOffline && record?.event && record.status !== "error" && record.status !== "processing"
+      ? record.card?.suggested_replies
+      : undefined;
+  const handleSelectSuggested = async (replyId: string) => {
+    try {
+      setSubmitting(true);
+      await onReply({ reply_id: replyId });
+      setSentReplyId(replyId);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  // Reads the latest `submitting` and `onReply` without re-subscribing the key listener.
+  const onShortcut = useEffectEvent((replyId: string) => {
+    if (!submitting) void handleSelectSuggested(replyId);
+  });
+
+  // Keyboard navigation: press 1-4 to instantly choose a quick reply
+  useEffect(() => {
+    if (!readyReplies) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      const num = parseInt(e.key, 10);
+      const selected = !isNaN(num) && num >= 1 ? readyReplies[num - 1] : undefined;
+      if (selected) {
+        e.preventDefault();
+        onShortcut(selected.id);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [readyReplies]);
 
   // 1. OFFLINE STATE
   if (isOffline) {
@@ -194,43 +233,6 @@ export default function VisitorCardView({
 
   const VisitorIcon = getVisitorIcon();
 
-  const handleSelectSuggested = async (replyId: string) => {
-    try {
-      setSubmitting(true);
-      await onReply({ reply_id: replyId });
-      setSentReplyId(replyId);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Keyboard navigation: press 1-4 to instantly choose a quick reply
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      if (!card?.suggested_replies || submitting) return;
-
-      const num = parseInt(e.key, 10);
-      if (!isNaN(num) && num >= 1 && num <= card.suggested_replies.length) {
-        const selected = card.suggested_replies[num - 1];
-        if (selected) {
-          e.preventDefault();
-          handleSelectSuggested(selected.id);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [card?.suggested_replies, submitting]);
 
   const handleSendCustom = async (e: React.FormEvent) => {
     e.preventDefault();
