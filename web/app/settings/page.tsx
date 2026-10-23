@@ -109,7 +109,7 @@ export default function SettingsPage() {
     { id: "contacts", label: "Trusted contacts", icon: Users, count: settings.trusted_contacts.length },
     { id: "visits", label: "Expected visits", icon: Calendar, count: settings.expected_visits.length },
     { id: "notice", label: "Consent notice", icon: Shield },
-    { id: "session", label: "Session", icon: LogOut },
+    { id: "session", label: "Access Mode", icon: Shield },
   ];
 
   return (
@@ -429,21 +429,17 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Tab 5: Session */}
+        {/* Tab 5: Access Mode */}
         {activeTab === "session" && (
           <div className="space-y-4 rounded-[20px] border border-[var(--frame)]/40 bg-[var(--surface)] p-6">
-            <h2 className="text-lg font-bold font-display">Device session</h2>
+            <h2 className="text-lg font-bold font-display">Hackathon Demo Access</h2>
             <p className="text-sm text-[var(--frame-text)]">
-              Authorized via demo access code.
+              Open demo access is active. Hackathon evaluators and visitors have full, unhindered access to all screens, live feeds, smart replies, and simulated events without needing an access code.
             </p>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="inline-flex min-h-[3rem] items-center gap-2 rounded-[14px] border-2 border-[var(--alarm)] bg-[var(--alarm-bg)] px-5 py-2.5 text-sm font-bold text-[var(--alarm)] hover:opacity-90"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Sign out of this browser</span>
-            </button>
+            <div className="flex items-center gap-2 rounded-[14px] border border-[var(--safe-border)] bg-[var(--safe-bg)] p-3 text-xs font-semibold text-[var(--safe)]">
+              <Check className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+              <span>All resident controls, demo scenarios, and door displays are fully unlocked.</span>
+            </div>
           </div>
         )}
 

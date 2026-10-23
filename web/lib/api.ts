@@ -52,22 +52,28 @@ export function setMockMode(enabled: boolean): void {
   }
 }
 
+export const DEFAULT_DEMO_TOKEN =
+  process.env.NEXT_PUBLIC_DEMO_TOKEN ?? "QVAuyvSgltwYMPKY42RyiMQ--IkDSpWJ";
+
 export function getToken(): string | null {
   try {
-    return window.localStorage.getItem(TOKEN_KEY);
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+    return stored || DEFAULT_DEMO_TOKEN;
   } catch {
-    return null;
+    return DEFAULT_DEMO_TOKEN;
   }
 }
 
 export function setToken(token: string | null): void {
   try {
     if (token) window.localStorage.setItem(TOKEN_KEY, token);
-    else window.localStorage.removeItem(TOKEN_KEY);
+    else window.localStorage.setItem(TOKEN_KEY, DEFAULT_DEMO_TOKEN);
   } catch {
     /* storage unavailable */
   }
-  window.dispatchEvent(new Event(AUTH_EVENT));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_EVENT));
+  }
 }
 
 export function importTokenFromHash(): void {
